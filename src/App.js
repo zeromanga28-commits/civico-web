@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { auth, db } from "./firebase";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "firebase/auth";
 import {
@@ -10,7 +10,6 @@ const ADMIN_EMAIL = "prefeitura@civico.com";
 const CLOUDINARY_CLOUD = "dgyikpjcs";
 const CLOUDINARY_PRESET = "jnr0m04h";
 
-// ── STATUS CONFIG ─────────────────────────────────────────────────────────
 const STATUS = {
   aberto:           { label: "Aberto",          emoji: "🔴", cor: "#B91C1C", bg: "#FEE2E2" },
   "em analise":     { label: "Em análise",      emoji: "🔵", cor: "#1D4ED8", bg: "#DBEAFE" },
@@ -20,7 +19,6 @@ const STATUS = {
 };
 const FLUXO_STATUS = ["aberto", "em analise", "em atendimento", "resolvido", "finalizado"];
 
-// ── COMPONENTES ───────────────────────────────────────────────────────────
 function Btn({ onClick, children, color = "blue", disabled = false }) {
   const [pressed, setPressed] = useState(false);
   const bg = {
@@ -114,10 +112,8 @@ function Timeline({ historico }) {
   );
 }
 
-// ── UPLOAD DE FOTO (Cloudinary) ───────────────────────────────────────────
+// ── UPLOAD DE FOTO ────────────────────────────────────────────────────────
 function UploadFoto({ foto, setFoto, preview, setPreview }) {
-  const inputRef = useRef();
-
   function handleArquivo(e) {
     const arquivo = e.target.files[0];
     if (!arquivo) return;
@@ -140,25 +136,23 @@ function UploadFoto({ foto, setFoto, preview, setPreview }) {
       <label style={{ fontSize: 14, fontWeight: 700, color: "#0D1F4E", display: "block", marginBottom: 8 }}>
         📷 Foto do problema <span style={{ fontSize: 12, color: "#94A3B8", fontWeight: 400 }}>(opcional · JPG/PNG · máx 5MB)</span>
       </label>
+
       {preview ? (
         <div style={{ position: "relative" }}>
           <img src={preview} alt="preview" style={{ width: "100%", borderRadius: 12, maxHeight: 220, objectFit: "cover", border: "2px solid #E2E8F0" }} />
           <button
-            onPointerUp={() => { setFoto(null); setPreview(null); }}
-            style={{ position: "absolute", top: 8, right: 8, background: "#B91C1C", color: "white", border: "none", borderRadius: 20, width: 28, height: 28, cursor: "pointer", fontSize: 16, fontWeight: 700, touchAction: "manipulation" }}
+            onClick={() => { setFoto(null); setPreview(null); }}
+            style={{ position: "absolute", top: 8, right: 8, background: "#B91C1C", color: "white", border: "none", borderRadius: 20, width: 28, height: 28, cursor: "pointer", fontSize: 16, fontWeight: 700 }}
           >×</button>
         </div>
       ) : (
-        <div
-          onPointerUp={() => inputRef.current.click()}
-          style={{ border: "2px dashed #CBD5E1", borderRadius: 12, padding: "28px 16px", textAlign: "center", cursor: "pointer", background: "#F8FAFC", touchAction: "manipulation" }}
-        >
+        <label style={{ display: "block", border: "2px dashed #CBD5E1", borderRadius: 12, padding: "28px 16px", textAlign: "center", cursor: "pointer", background: "#F8FAFC" }}>
           <div style={{ fontSize: 36, marginBottom: 8 }}>📸</div>
-          <div style={{ fontSize: 14, color: "#64748B" }}>Toque para adicionar uma foto</div>
+          <div style={{ fontSize: 14, color: "#64748B" }}>Clique para adicionar uma foto</div>
           <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 4 }}>JPG ou PNG · máx 5MB</div>
-        </div>
+          <input type="file" accept="image/jpeg,image/png" onChange={handleArquivo} style={{ display: "none" }} />
+        </label>
       )}
-      <input ref={inputRef} type="file" accept="image/jpeg,image/png" onChange={handleArquivo} style={{ display: "none" }} />
     </div>
   );
 }
@@ -183,7 +177,6 @@ const inputStyle = {
   WebkitAppearance: "none", touchAction: "manipulation",
 };
 
-// ── APP PRINCIPAL ─────────────────────────────────────────────────────────
 export default function App() {
   const [tela, setTela]               = useState("login");
   const [tipoLogin, setTipoLogin]     = useState("cidadao");
@@ -191,8 +184,6 @@ export default function App() {
   const [senha, setSenha]             = useState("");
   const [erro, setErro]               = useState("");
   const [usuario, setUsuario]         = useState(null);
-
-  // Reporte
   const [titulo, setTitulo]           = useState("");
   const [descricao, setDescricao]     = useState("");
   const [categoria, setCategoria]     = useState("");
@@ -200,8 +191,6 @@ export default function App() {
   const [preview, setPreview]         = useState(null);
   const [enviando, setEnviando]       = useState(false);
   const [sucesso, setSucesso]         = useState(false);
-
-  // Chamados
   const [chamados, setChamados]               = useState([]);
   const [meusChamados, setMeusChamados]       = useState([]);
   const [carregando, setCarregando]           = useState(false);
@@ -209,7 +198,6 @@ export default function App() {
   const [historicoDetalhe, setHistoricoDetalhe] = useState([]);
   const [obsStatus, setObsStatus]             = useState("");
 
-  // ── AUTH ──────────────────────────────────────────────────────────────────
   async function entrar() {
     setErro("");
     try {
@@ -242,15 +230,12 @@ export default function App() {
     setTela("login");
   }
 
-  // ── REPORTE COM FOTO ──────────────────────────────────────────────────────
   async function enviarReporte() {
     if (!titulo || !descricao || !categoria) { alert("Preencha todos os campos!"); return; }
     setEnviando(true);
     try {
       let fotoURL = null;
-      if (foto) {
-        fotoURL = await uploadCloudinary(foto);
-      }
+      if (foto) fotoURL = await uploadCloudinary(foto);
       const docRef = await addDoc(collection(db, "chamados"), {
         titulo, descricao, categoria, status: "aberto",
         email: usuario.email, userId: usuario.uid,
@@ -264,14 +249,10 @@ export default function App() {
       setSucesso(true);
       setTitulo(""); setDescricao(""); setCategoria("");
       setFoto(null); setPreview(null);
-    } catch (e) {
-      alert("Erro ao enviar. Tente novamente.");
-      console.error(e);
-    }
+    } catch (e) { alert("Erro ao enviar. Tente novamente."); console.error(e); }
     setEnviando(false);
   }
 
-  // ── MEUS CHAMADOS ─────────────────────────────────────────────────────────
   async function carregarMeusChamados() {
     if (!usuario) return;
     setCarregando(true);
@@ -295,7 +276,6 @@ export default function App() {
 
   useEffect(() => { if (tela === "meus-chamados") carregarMeusChamados(); }, [tela]);
 
-  // ── PAINEL ADMIN ──────────────────────────────────────────────────────────
   async function carregarChamados() {
     setCarregando(true);
     try {
@@ -310,8 +290,7 @@ export default function App() {
     try {
       await updateDoc(doc(db, "chamados", id), { status: novoStatus });
       await addDoc(collection(db, "chamados", id, "historico"), {
-        status: novoStatus, obs: obsStatus || "",
-        criadoEm: serverTimestamp()
+        status: novoStatus, obs: obsStatus || "", criadoEm: serverTimestamp()
       });
       setObsStatus("");
       carregarChamados();
@@ -320,11 +299,11 @@ export default function App() {
 
   useEffect(() => { if (tela === "painel") carregarChamados(); }, [tela]);
 
-  // ── TELA DETALHE ──────────────────────────────────────────────────────────
+  // ── DETALHE ───────────────────────────────────────────────────────────────
   if (tela === "detalhe" && chamadoDetalhe) return (
     <div style={{ minHeight: "100vh", background: "#F8FAFC", fontFamily: "Arial, sans-serif" }}>
       <div style={{ background: "linear-gradient(135deg,#0D1F4E,#1B4FD8)", padding: "20px 24px", display: "flex", alignItems: "center", gap: 14 }}>
-        <button onPointerUp={() => setTela("meus-chamados")} style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "white", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 14, touchAction: "manipulation" }}>← Voltar</button>
+        <button onClick={() => setTela("meus-chamados")} style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "white", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 14 }}>← Voltar</button>
         <div style={{ fontSize: 20, fontWeight: 900, color: "white" }}>📋 Detalhe do Chamado</div>
       </div>
       <div style={{ padding: 24, maxWidth: 600, margin: "0 auto" }}>
@@ -362,11 +341,11 @@ export default function App() {
     </div>
   );
 
-  // ── TELA MEUS CHAMADOS ────────────────────────────────────────────────────
+  // ── MEUS CHAMADOS ─────────────────────────────────────────────────────────
   if (tela === "meus-chamados") return (
     <div style={{ minHeight: "100vh", background: "#F8FAFC", fontFamily: "Arial, sans-serif" }}>
       <div style={{ background: "linear-gradient(135deg,#0D1F4E,#1B4FD8)", padding: "20px 24px", display: "flex", alignItems: "center", gap: 14 }}>
-        <button onPointerUp={() => setTela("home")} style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "white", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 14, touchAction: "manipulation" }}>← Voltar</button>
+        <button onClick={() => setTela("home")} style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "white", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 14 }}>← Voltar</button>
         <div style={{ fontSize: 20, fontWeight: 900, color: "white" }}>📋 Meus Chamados</div>
       </div>
       <div style={{ padding: 24, maxWidth: 700, margin: "0 auto" }}>
@@ -382,7 +361,7 @@ export default function App() {
         ) : (
           <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
             {meusChamados.map(c => (
-              <div key={c.id} onPointerUp={() => abrirDetalhe(c)} style={{ background: "white", borderRadius: 16, padding: 20, boxShadow: "0 2px 12px rgba(0,0,0,0.06)", cursor: "pointer", border: "2px solid #F1F5F9", touchAction: "manipulation" }}>
+              <div key={c.id} onClick={() => abrirDetalhe(c)} style={{ background: "white", borderRadius: 16, padding: 20, boxShadow: "0 2px 12px rgba(0,0,0,0.06)", cursor: "pointer", border: "2px solid #F1F5F9" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
                   <div style={{ fontSize: 16, fontWeight: 700, color: "#0D1F4E", flex: 1, marginRight: 12 }}>{c.titulo}</div>
                   <StatusBadge status={c.status} />
@@ -411,8 +390,8 @@ export default function App() {
           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", marginTop: 2 }}>Cívico — Gestão de Chamados</div>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
-          <button onPointerUp={carregarChamados} style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "white", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 13, touchAction: "manipulation" }}>🔄</button>
-          <button onPointerUp={sair} style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "white", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 13, touchAction: "manipulation" }}>Sair</button>
+          <button onClick={carregarChamados} style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "white", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 13 }}>🔄</button>
+          <button onClick={sair} style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "white", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 13 }}>Sair</button>
         </div>
       </div>
       <div style={{ padding: "20px 16px", maxWidth: 1100, margin: "0 auto" }}>
@@ -437,7 +416,7 @@ export default function App() {
           ) : chamados.length === 0 ? (
             <div style={{ padding: 40, textAlign: "center", color: "#94A3B8" }}>
               Nenhum chamado ainda.<br /><br />
-              <button onPointerUp={carregarChamados} style={{ background: "#1B4FD8", color: "white", border: "none", borderRadius: 8, padding: "10px 20px", cursor: "pointer", fontWeight: 700, touchAction: "manipulation" }}>Carregar chamados</button>
+              <button onClick={carregarChamados} style={{ background: "#1B4FD8", color: "white", border: "none", borderRadius: 8, padding: "10px 20px", cursor: "pointer", fontWeight: 700 }}>Carregar chamados</button>
             </div>
           ) : chamados.map((c, i) => (
             <div key={c.id} style={{ padding: "16px 20px", borderBottom: "1px solid #F1F5F9", background: i % 2 === 0 ? "white" : "#FAFAFA" }}>
@@ -463,8 +442,8 @@ export default function App() {
                 {FLUXO_STATUS.filter(s => s !== c.status).map(s => {
                   const st = STATUS[s];
                   return (
-                    <button key={s} onPointerUp={() => mudarStatus(c.id, s)}
-                      style={{ background: st.bg, color: st.cor, border: "none", borderRadius: 8, padding: "7px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700, touchAction: "manipulation" }}
+                    <button key={s} onClick={() => mudarStatus(c.id, s)}
+                      style={{ background: st.bg, color: st.cor, border: "none", borderRadius: 8, padding: "7px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700 }}
                     >{st.emoji} {st.label}</button>
                   );
                 })}
@@ -476,11 +455,11 @@ export default function App() {
     </div>
   );
 
-  // ── TELA REPORTE ──────────────────────────────────────────────────────────
+  // ── REPORTE ───────────────────────────────────────────────────────────────
   if (tela === "reporte") return (
     <div style={{ minHeight: "100vh", background: "#F8FAFC", fontFamily: "Arial, sans-serif" }}>
       <div style={{ background: "linear-gradient(135deg,#0D1F4E,#1B4FD8)", padding: "20px 24px", display: "flex", alignItems: "center", gap: 14 }}>
-        <button onPointerUp={() => { setTela("home"); setSucesso(false); }} style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "white", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 14, touchAction: "manipulation" }}>← Voltar</button>
+        <button onClick={() => { setTela("home"); setSucesso(false); }} style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "white", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 14 }}>← Voltar</button>
         <div style={{ fontSize: 20, fontWeight: 900, color: "white" }}>📸 Reportar Problema</div>
       </div>
       <div style={{ padding: 24, maxWidth: 600, margin: "0 auto" }}>
@@ -522,14 +501,14 @@ export default function App() {
     </div>
   );
 
-  // ── TELA HOME ─────────────────────────────────────────────────────────────
+  // ── HOME ──────────────────────────────────────────────────────────────────
   if (tela === "home") return (
     <div style={{ minHeight: "100vh", background: "#F8FAFC", fontFamily: "Arial, sans-serif" }}>
       <div style={{ background: "linear-gradient(135deg,#0D1F4E,#1B4FD8)", padding: "20px 24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div style={{ fontSize: 22, fontWeight: 900, color: "white" }}>🏙️ Cívico</div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ color: "rgba(255,255,255,0.7)", fontSize: 13 }}>{usuario?.email}</span>
-          <button onPointerUp={sair} style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "white", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 13, touchAction: "manipulation" }}>Sair</button>
+          <button onClick={sair} style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "white", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 13 }}>Sair</button>
         </div>
       </div>
       <div style={{ padding: 24, maxWidth: 800, margin: "0 auto" }}>
@@ -560,7 +539,7 @@ export default function App() {
         </div>
         <div style={{ display: "flex", background: "#F1F5F9", borderRadius: 12, padding: 4, marginBottom: 24 }}>
           {[["cidadao", "👤 Cidadão"], ["admin", "🏛️ Administração"]].map(([val, label]) => (
-            <button key={val} onPointerUp={() => { setTipoLogin(val); setErro(""); setTela("login"); }}
+            <button key={val} onClick={() => { setTipoLogin(val); setErro(""); setTela("login"); }}
               style={{
                 flex: 1, padding: "10px 8px", borderRadius: 9, border: "none", cursor: "pointer",
                 fontSize: val === "admin" ? 13 : 14, fontWeight: 700,
@@ -568,7 +547,6 @@ export default function App() {
                 color: tipoLogin === val ? "#0D1F4E" : "#94A3B8",
                 boxShadow: tipoLogin === val ? "0 2px 8px rgba(0,0,0,0.10)" : "none",
                 transition: "all 0.2s",
-                WebkitTapHighlightColor: "transparent", touchAction: "manipulation",
               }}
             >{label}</button>
           ))}
