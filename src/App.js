@@ -1,10 +1,25 @@
-import { useState } from "react";
-import { auth, db } from "./firebase";
+import { useState, useEffect, useRef } from "react";
+import { auth, db, storage } from "./firebase";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "firebase/auth";
-import { collection, addDoc, getDocs, updateDoc, doc, serverTimestamp, query, orderBy } from "firebase/firestore";
+import {
+  collection, addDoc, getDocs, updateDoc, doc,
+  serverTimestamp, query, orderBy, where
+} from "firebase/firestore";
+import { ref, uploadBytes, getDownloadURL } from "firebase/storage";
 
 const ADMIN_EMAIL = "prefeitura@civico.com";
 
+// ── STATUS CONFIG ─────────────────────────────────────────────────────────
+const STATUS = {
+  aberto:           { label: "Aberto",          emoji: "🔴", cor: "#B91C1C", bg: "#FEE2E2" },
+  "em analise":     { label: "Em análise",      emoji: "🔵", cor: "#1D4ED8", bg: "#DBEAFE" },
+  "em atendimento": { label: "Em atendimento",  emoji: "🟡", cor: "#B45309", bg: "#FEF3C7" },
+  resolvido:        { label: "Resolvido",        emoji: "🟢", cor: "#0A7C4E", bg: "#DCFCE7" },
+  finalizado:       { label: "Finalizado",       emoji: "⚫", cor: "#475569", bg: "#F1F5F9" },
+};
+const FLUXO_STATUS = ["aberto", "em analise", "em atendimento", "resolvido", "finalizado"];
+
+// ── COMPONENTES ───────────────────────────────────────────────────────────
 function Btn({ onClick, children, color = "blue", disabled = false }) {
   const [pressed, setPressed] = useState(false);
   const bg = {
@@ -27,12 +42,9 @@ function Btn({ onClick, children, color = "blue", disabled = false }) {
         transform: pressed ? "scale(0.97)" : "scale(1)",
         boxShadow: pressed ? "0 2px 8px rgba(0,0,0,0.15)" : "0 4px 16px rgba(0,0,0,0.18)",
         transition: "transform 0.1s, box-shadow 0.1s",
-        WebkitTapHighlightColor: "transparent",
-        touchAction: "manipulation",
+        WebkitTapHighlightColor: "transparent", touchAction: "manipulation",
       }}
-    >
-      {children}
-    </button>
+    >{children}</button>
   );
 }
 
@@ -54,51 +66,108 @@ function Card({ onClick, children, highlight = false }) {
         WebkitTapHighlightColor: "transparent",
         userSelect: "none", touchAction: "manipulation",
       }}
-    >
-      {children}
-    </div>
-  );
-}
-
-function StatusBtn({ onClick, children, color }) {
-  const [pressed, setPressed] = useState(false);
-  const styles = {
-    amber: { background: "#FEF3C7", color: "#B45309" },
-    green: { background: "#DCFCE7", color: "#0A7C4E" },
-    red:   { background: "#FEE2E2", color: "#B91C1C" },
-  };
-  return (
-    <button
-      onPointerDown={() => setPressed(true)}
-      onPointerUp={() => { setPressed(false); onClick(); }}
-      onPointerLeave={() => setPressed(false)}
-      style={{
-        ...styles[color], border: "none", borderRadius: 8,
-        padding: "7px 12px", cursor: "pointer", fontSize: 13, fontWeight: 700,
-        transform: pressed ? "scale(0.95)" : "scale(1)",
-        transition: "transform 0.1s",
-        WebkitTapHighlightColor: "transparent",
-        touchAction: "manipulation",
-      }}
-    >
-      {children}
-    </button>
+    >{children}</div>
   );
 }
 
 function Link({ onClick, children }) {
   return (
-    <span
-      onPointerUp={() => onClick()}
-      style={{
-        color: "#1B4FD8", fontWeight: 700, cursor: "pointer",
-        padding: "8px 4px", display: "inline-block",
-        WebkitTapHighlightColor: "transparent",
-        touchAction: "manipulation",
-      }}
-    >
-      {children}
-    </span>
+    <span onPointerUp={() => onClick()} style={{
+      color: "#1B4FD8", fontWeight: 700, cursor: "pointer",
+      padding: "8px 4px", display: "inline-block",
+      WebkitTapHighlightColor: "transparent", touchAction: "manipulation",
+    }}>{children}</span>
+  );
+}
+
+function StatusBadge({ status }) {
+  const s = STATUS[status] || STATUS["aberto"];
+  return (
+    <span style={{
+      background: s.bg, color: s.cor, fontSize: 12, fontWeight: 700,
+      padding: "4px 12px", borderRadius: 20, display: "inline-block"
+    }}>{s.emoji} {s.label}</span>
+  );
+}
+
+function Timeline({ historico }) {
+  if (!historico || historico.length === 0) return null;
+  return (
+    <div style={{ marginTop: 16 }}>
+      <div style={{ fontSize: 13, fontWeight: 700, color: "#0D1F4E", marginBottom: 10 }}>📋 Histórico</div>
+      <div style={{ position: "relative", paddingLeft: 20 }}>
+        <div style={{ position: "absolute", left: 7, top: 0, bottom: 0, width: 2, background: "#E2E8F0" }} />
+        {historico.map((h, i) => {
+          const s = STATUS[h.status] || STATUS["aberto"];
+          return (
+            <div key={i} style={{ position: "relative", marginBottom: 14 }}>
+              <div style={{ position: "absolute", left: -20, top: 2, width: 14, height: 14, borderRadius: "50%", background: s.cor, border: "2px solid white", boxShadow: "0 0 0 2px " + s.cor }} />
+              <div style={{ fontSize: 13, fontWeight: 700, color: s.cor }}>{s.emoji} {s.label}</div>
+              <div style={{ fontSize: 11, color: "#94A3B8" }}>{h.criadoEm?.toDate ? h.criadoEm.toDate().toLocaleString("pt-BR") : ""}</div>
+              {h.obs && <div style={{ fontSize: 12, color: "#64748B", marginTop: 2 }}>{h.obs}</div>}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+// ── NOVO: Componente de Upload de Foto ────────────────────────────────────
+function UploadFoto({ foto, setFoto, preview, setPreview }) {
+  const inputRef = useRef();
+
+  function handleArquivo(e) {
+    const arquivo = e.target.files[0];
+    if (!arquivo) return;
+
+    // Validar tipo
+    if (!["image/jpeg", "image/png"].includes(arquivo.type)) {
+      alert("Apenas arquivos JPG e PNG são aceitos.");
+      return;
+    }
+    // Validar tamanho (5MB)
+    if (arquivo.size > 5 * 1024 * 1024) {
+      alert("A imagem deve ter no máximo 5MB.");
+      return;
+    }
+
+    setFoto(arquivo);
+    const reader = new FileReader();
+    reader.onload = (ev) => setPreview(ev.target.result);
+    reader.readAsDataURL(arquivo);
+  }
+
+  return (
+    <div style={{ marginBottom: 20 }}>
+      <label style={{ fontSize: 14, fontWeight: 700, color: "#0D1F4E", display: "block", marginBottom: 8 }}>
+        📷 Foto do problema <span style={{ fontSize: 12, color: "#94A3B8", fontWeight: 400 }}>(opcional · JPG/PNG · máx 5MB)</span>
+      </label>
+
+      {preview ? (
+        <div style={{ position: "relative" }}>
+          <img src={preview} alt="preview" style={{ width: "100%", borderRadius: 12, maxHeight: 220, objectFit: "cover", border: "2px solid #E2E8F0" }} />
+          <button
+            onPointerUp={() => { setFoto(null); setPreview(null); }}
+            style={{ position: "absolute", top: 8, right: 8, background: "#B91C1C", color: "white", border: "none", borderRadius: 20, width: 28, height: 28, cursor: "pointer", fontSize: 16, fontWeight: 700, touchAction: "manipulation" }}
+          >×</button>
+        </div>
+      ) : (
+        <div
+          onPointerUp={() => inputRef.current.click()}
+          style={{
+            border: "2px dashed #CBD5E1", borderRadius: 12, padding: "28px 16px",
+            textAlign: "center", cursor: "pointer", background: "#F8FAFC",
+            touchAction: "manipulation"
+          }}
+        >
+          <div style={{ fontSize: 36, marginBottom: 8 }}>📸</div>
+          <div style={{ fontSize: 14, color: "#64748B" }}>Toque para adicionar uma foto</div>
+          <div style={{ fontSize: 12, color: "#94A3B8", marginTop: 4 }}>JPG ou PNG · máx 5MB</div>
+        </div>
+      )}
+      <input ref={inputRef} type="file" accept="image/jpeg,image/png" onChange={handleArquivo} style={{ display: "none" }} />
+    </div>
   );
 }
 
@@ -109,33 +178,43 @@ const inputStyle = {
   WebkitAppearance: "none", touchAction: "manipulation",
 };
 
+// ── APP PRINCIPAL ─────────────────────────────────────────────────────────
 export default function App() {
-  const [tela, setTela]             = useState("login");
-  const [tipoLogin, setTipoLogin]   = useState("cidadao");
-  const [email, setEmail]           = useState("");
-  const [senha, setSenha]           = useState("");
-  const [erro, setErro]             = useState("");
-  const [usuario, setUsuario]       = useState(null);
-  const [titulo, setTitulo]         = useState("");
-  const [descricao, setDescricao]   = useState("");
-  const [categoria, setCategoria]   = useState("");
-  const [enviando, setEnviando]     = useState(false);
-  const [sucesso, setSucesso]       = useState(false);
-  const [chamados, setChamados]     = useState([]);
-  const [carregando, setCarregando] = useState(false);
+  const [tela, setTela]               = useState("login");
+  const [tipoLogin, setTipoLogin]     = useState("cidadao");
+  const [email, setEmail]             = useState("");
+  const [senha, setSenha]             = useState("");
+  const [erro, setErro]               = useState("");
+  const [usuario, setUsuario]         = useState(null);
 
+  // Reporte
+  const [titulo, setTitulo]           = useState("");
+  const [descricao, setDescricao]     = useState("");
+  const [categoria, setCategoria]     = useState("");
+  const [foto, setFoto]               = useState(null);
+  const [preview, setPreview]         = useState(null);
+  const [enviando, setEnviando]       = useState(false);
+  const [sucesso, setSucesso]         = useState(false);
+
+  // Chamados
+  const [chamados, setChamados]               = useState([]);
+  const [meusChamados, setMeusChamados]       = useState([]);
+  const [carregando, setCarregando]           = useState(false);
+  const [chamadoDetalhe, setChamadoDetalhe]   = useState(null);
+  const [historicoDetalhe, setHistoricoDetalhe] = useState([]);
+  const [obsStatus, setObsStatus]             = useState("");
+
+  // ── AUTH ──────────────────────────────────────────────────────────────────
   async function entrar() {
     setErro("");
     try {
       const result = await signInWithEmailAndPassword(auth, email, senha);
       const isAdmin = result.user.email === ADMIN_EMAIL;
-      if (tipoLogin === "admin" && !isAdmin)   { await signOut(auth); setErro("Acesso negado para este e-mail."); return; }
-      if (tipoLogin === "cidadao" && isAdmin)  { await signOut(auth); setErro("Use o acesso Administração."); return; }
+      if (tipoLogin === "admin" && !isAdmin)  { await signOut(auth); setErro("Acesso negado para este e-mail."); return; }
+      if (tipoLogin === "cidadao" && isAdmin) { await signOut(auth); setErro("Use o acesso Administração."); return; }
       setUsuario(result.user);
       setTela(isAdmin ? "painel" : "home");
-    } catch (e) {
-      setErro("E-mail ou senha incorretos.");
-    }
+    } catch (e) { setErro("E-mail ou senha incorretos."); }
   }
 
   async function cadastrar() {
@@ -158,19 +237,64 @@ export default function App() {
     setTela("login");
   }
 
+  // ── REPORTE COM FOTO ──────────────────────────────────────────────────────
   async function enviarReporte() {
     if (!titulo || !descricao || !categoria) { alert("Preencha todos os campos!"); return; }
     setEnviando(true);
     try {
-      await addDoc(collection(db, "chamados"), {
+      let fotoURL = null;
+
+      // Upload da foto se existir
+      if (foto) {
+        const fotoRef = ref(storage, `chamados/${usuario.uid}/${Date.now()}_${foto.name}`);
+        await uploadBytes(fotoRef, foto);
+        fotoURL = await getDownloadURL(fotoRef);
+      }
+
+      const docRef = await addDoc(collection(db, "chamados"), {
         titulo, descricao, categoria, status: "aberto",
-        email: usuario.email, userId: usuario.uid, criadoEm: serverTimestamp()
+        email: usuario.email, userId: usuario.uid,
+        fotoURL: fotoURL || null,
+        criadoEm: serverTimestamp()
       });
-      setSucesso(true); setTitulo(""); setDescricao(""); setCategoria("");
+
+      await addDoc(collection(db, "chamados", docRef.id, "historico"), {
+        status: "aberto", obs: "Ocorrência registrada pelo cidadão.",
+        criadoEm: serverTimestamp()
+      });
+
+      setSucesso(true);
+      setTitulo(""); setDescricao(""); setCategoria("");
+      setFoto(null); setPreview(null);
     } catch (e) { alert("Erro ao enviar. Tente novamente."); }
     setEnviando(false);
   }
 
+  // ── MEUS CHAMADOS ─────────────────────────────────────────────────────────
+  async function carregarMeusChamados() {
+    if (!usuario) return;
+    setCarregando(true);
+    try {
+      const q = query(collection(db, "chamados"), where("userId", "==", usuario.uid), orderBy("criadoEm", "desc"));
+      const snap = await getDocs(q);
+      setMeusChamados(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+    } catch (e) { console.error(e); }
+    setCarregando(false);
+  }
+
+  async function abrirDetalhe(chamado) {
+    setChamadoDetalhe(chamado);
+    try {
+      const q = query(collection(db, "chamados", chamado.id, "historico"), orderBy("criadoEm", "asc"));
+      const snap = await getDocs(q);
+      setHistoricoDetalhe(snap.docs.map(d => d.data()));
+    } catch (e) { setHistoricoDetalhe([]); }
+    setTela("detalhe");
+  }
+
+  useEffect(() => { if (tela === "meus-chamados") carregarMeusChamados(); }, [tela]);
+
+  // ── PAINEL ADMIN ──────────────────────────────────────────────────────────
   async function carregarChamados() {
     setCarregando(true);
     try {
@@ -182,15 +306,107 @@ export default function App() {
   }
 
   async function mudarStatus(id, novoStatus) {
-    await updateDoc(doc(db, "chamados", id), { status: novoStatus });
-    carregarChamados();
+    try {
+      await updateDoc(doc(db, "chamados", id), { status: novoStatus });
+      await addDoc(collection(db, "chamados", id, "historico"), {
+        status: novoStatus, obs: obsStatus || "",
+        criadoEm: serverTimestamp()
+      });
+      setObsStatus("");
+      carregarChamados();
+    } catch (e) { alert("Erro ao atualizar status."); }
   }
 
-  const statusCor   = { aberto: "#B91C1C", "em andamento": "#B45309", resolvido: "#0A7C4E" };
-  const statusBg    = { aberto: "#FEE2E2", "em andamento": "#FEF3C7", resolvido: "#DCFCE7" };
-  const statusLabel = { aberto: "🔴 Aberto", "em andamento": "🟡 Em andamento", resolvido: "🟢 Resolvido" };
+  useEffect(() => { if (tela === "painel") carregarChamados(); }, [tela]);
 
-  // ── PAINEL ───────────────────────────────────────────────────
+  // ── TELA DETALHE ──────────────────────────────────────────────────────────
+  if (tela === "detalhe" && chamadoDetalhe) return (
+    <div style={{ minHeight: "100vh", background: "#F8FAFC", fontFamily: "Arial, sans-serif" }}>
+      <div style={{ background: "linear-gradient(135deg,#0D1F4E,#1B4FD8)", padding: "20px 24px", display: "flex", alignItems: "center", gap: 14 }}>
+        <button onPointerUp={() => setTela("meus-chamados")} style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "white", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 14, touchAction: "manipulation" }}>← Voltar</button>
+        <div style={{ fontSize: 20, fontWeight: 900, color: "white" }}>📋 Detalhe do Chamado</div>
+      </div>
+      <div style={{ padding: 24, maxWidth: 600, margin: "0 auto" }}>
+        <div style={{ background: "white", borderRadius: 20, padding: 24, boxShadow: "0 4px 20px rgba(0,0,0,0.06)" }}>
+          <div style={{ marginBottom: 12 }}><StatusBadge status={chamadoDetalhe.status} /></div>
+          <div style={{ fontSize: 20, fontWeight: 800, color: "#0D1F4E", marginBottom: 8 }}>{chamadoDetalhe.titulo}</div>
+          <div style={{ fontSize: 14, color: "#64748B", marginBottom: 8 }}>{chamadoDetalhe.descricao}</div>
+          <div style={{ fontSize: 13, color: "#94A3B8", marginBottom: 4 }}>📂 {chamadoDetalhe.categoria}</div>
+          <div style={{ fontSize: 13, color: "#94A3B8", marginBottom: 16 }}>📅 {chamadoDetalhe.criadoEm?.toDate ? chamadoDetalhe.criadoEm.toDate().toLocaleDateString("pt-BR") : ""}</div>
+
+          {/* Foto do chamado */}
+          {chamadoDetalhe.fotoURL && (
+            <div style={{ marginBottom: 20 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "#0D1F4E", marginBottom: 8 }}>📷 Foto</div>
+              <img src={chamadoDetalhe.fotoURL} alt="foto do problema" style={{ width: "100%", borderRadius: 12, maxHeight: 260, objectFit: "cover" }} />
+            </div>
+          )}
+
+          {/* Barra de progresso */}
+          <div style={{ marginBottom: 20 }}>
+            <div style={{ fontSize: 13, fontWeight: 700, color: "#0D1F4E", marginBottom: 10 }}>Progresso</div>
+            <div style={{ display: "flex", gap: 4 }}>
+              {FLUXO_STATUS.map((s, i) => {
+                const idx = FLUXO_STATUS.indexOf(chamadoDetalhe.status);
+                const ativo = i <= idx;
+                const st = STATUS[s];
+                return (
+                  <div key={s} style={{ flex: 1 }}>
+                    <div style={{ height: 6, borderRadius: 3, background: ativo ? st.cor : "#E2E8F0", marginBottom: 4 }} />
+                    <div style={{ fontSize: 9, color: ativo ? st.cor : "#94A3B8", textAlign: "center", fontWeight: 700 }}>{st.label}</div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          <Timeline historico={historicoDetalhe} />
+        </div>
+      </div>
+    </div>
+  );
+
+  // ── TELA MEUS CHAMADOS ────────────────────────────────────────────────────
+  if (tela === "meus-chamados") return (
+    <div style={{ minHeight: "100vh", background: "#F8FAFC", fontFamily: "Arial, sans-serif" }}>
+      <div style={{ background: "linear-gradient(135deg,#0D1F4E,#1B4FD8)", padding: "20px 24px", display: "flex", alignItems: "center", gap: 14 }}>
+        <button onPointerUp={() => setTela("home")} style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "white", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 14, touchAction: "manipulation" }}>← Voltar</button>
+        <div style={{ fontSize: 20, fontWeight: 900, color: "white" }}>📋 Meus Chamados</div>
+      </div>
+      <div style={{ padding: 24, maxWidth: 700, margin: "0 auto" }}>
+        {carregando ? (
+          <div style={{ textAlign: "center", padding: 40, color: "#94A3B8" }}>Carregando...</div>
+        ) : meusChamados.length === 0 ? (
+          <div style={{ background: "white", borderRadius: 20, padding: 40, textAlign: "center", boxShadow: "0 4px 20px rgba(0,0,0,0.06)" }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>📭</div>
+            <div style={{ fontSize: 18, fontWeight: 700, color: "#0D1F4E", marginBottom: 8 }}>Nenhum chamado ainda</div>
+            <div style={{ fontSize: 14, color: "#64748B", marginBottom: 24 }}>Você ainda não reportou nenhum problema.</div>
+            <Btn onClick={() => setTela("reporte")}>Reportar agora</Btn>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+            {meusChamados.map(c => (
+              <div key={c.id} onPointerUp={() => abrirDetalhe(c)} style={{ background: "white", borderRadius: 16, padding: 20, boxShadow: "0 2px 12px rgba(0,0,0,0.06)", cursor: "pointer", border: "2px solid #F1F5F9", touchAction: "manipulation" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+                  <div style={{ fontSize: 16, fontWeight: 700, color: "#0D1F4E", flex: 1, marginRight: 12 }}>{c.titulo}</div>
+                  <StatusBadge status={c.status} />
+                </div>
+                {c.fotoURL && <img src={c.fotoURL} alt="foto" style={{ width: "100%", borderRadius: 10, maxHeight: 140, objectFit: "cover", marginBottom: 8 }} />}
+                <div style={{ fontSize: 13, color: "#64748B", marginBottom: 6 }}>{c.descricao}</div>
+                <div style={{ fontSize: 12, color: "#94A3B8", display: "flex", gap: 12 }}>
+                  <span>📂 {c.categoria}</span>
+                  <span>📅 {c.criadoEm?.toDate ? c.criadoEm.toDate().toLocaleDateString("pt-BR") : ""}</span>
+                </div>
+                <div style={{ fontSize: 12, color: "#1B4FD8", marginTop: 8, fontWeight: 700 }}>Ver detalhes →</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+
+  // ── PAINEL ADMIN ──────────────────────────────────────────────────────────
   if (tela === "painel") return (
     <div style={{ minHeight: "100vh", background: "#F8FAFC", fontFamily: "Arial, sans-serif" }}>
       <div style={{ background: "linear-gradient(135deg,#0D1F4E,#1B4FD8)", padding: "20px 24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -206,9 +422,9 @@ export default function App() {
       <div style={{ padding: "20px 16px", maxWidth: 1100, margin: "0 auto" }}>
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 20 }}>
           {[
-            { label: "Total",      valor: chamados.length, cor: "#1B4FD8" },
-            { label: "Em Aberto",  valor: chamados.filter(c => c.status === "aberto").length, cor: "#B91C1C" },
-            { label: "Resolvidos", valor: chamados.filter(c => c.status === "resolvido").length, cor: "#0A7C4E" },
+            { label: "Total",      valor: chamados.length,                                                                      cor: "#1B4FD8" },
+            { label: "Em Aberto",  valor: chamados.filter(c => c.status === "aberto").length,                                   cor: "#B91C1C" },
+            { label: "Resolvidos", valor: chamados.filter(c => c.status === "resolvido" || c.status === "finalizado").length,   cor: "#0A7C4E" },
           ].map((s, i) => (
             <div key={i} style={{ background: "white", borderRadius: 14, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
               <div style={{ fontSize: 28, fontWeight: 900, color: s.cor }}>{s.valor}</div>
@@ -230,16 +446,35 @@ export default function App() {
           ) : chamados.map((c, i) => (
             <div key={c.id} style={{ padding: "16px 20px", borderBottom: "1px solid #F1F5F9", background: i % 2 === 0 ? "white" : "#FAFAFA" }}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6, flexWrap: "wrap" }}>
-                <span style={{ background: statusBg[c.status], color: statusCor[c.status], fontSize: 12, fontWeight: 700, padding: "3px 10px", borderRadius: 20 }}>{statusLabel[c.status]}</span>
+                <StatusBadge status={c.status} />
                 <span style={{ fontSize: 12, color: "#94A3B8" }}>{c.categoria}</span>
               </div>
               <div style={{ fontSize: 15, fontWeight: 700, color: "#0D1F4E", marginBottom: 4 }}>{c.titulo}</div>
               <div style={{ fontSize: 13, color: "#64748B", marginBottom: 4 }}>{c.descricao}</div>
+
+              {/* Foto no painel admin */}
+              {c.fotoURL && (
+                <div style={{ marginBottom: 10 }}>
+                  <img src={c.fotoURL} alt="foto do problema" style={{ width: "100%", maxWidth: 320, borderRadius: 10, maxHeight: 180, objectFit: "cover" }} />
+                </div>
+              )}
+
               <div style={{ fontSize: 12, color: "#94A3B8", marginBottom: 10 }}>👤 {c.email}</div>
-              <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                {c.status !== "em andamento" && <StatusBtn onClick={() => mudarStatus(c.id, "em andamento")} color="amber">🟡 Em andamento</StatusBtn>}
-                {c.status !== "resolvido"    && <StatusBtn onClick={() => mudarStatus(c.id, "resolvido")}    color="green">🟢 Resolvido</StatusBtn>}
-                {c.status !== "aberto"       && <StatusBtn onClick={() => mudarStatus(c.id, "aberto")}       color="red">🔴 Reabrir</StatusBtn>}
+              <input
+                placeholder="Observação (opcional)"
+                value={obsStatus}
+                onChange={e => setObsStatus(e.target.value)}
+                style={{ ...inputStyle, fontSize: 13, padding: "8px 12px", marginBottom: 8 }}
+              />
+              <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+                {FLUXO_STATUS.filter(s => s !== c.status).map(s => {
+                  const st = STATUS[s];
+                  return (
+                    <button key={s} onPointerUp={() => mudarStatus(c.id, s)}
+                      style={{ background: st.bg, color: st.cor, border: "none", borderRadius: 8, padding: "7px 12px", cursor: "pointer", fontSize: 12, fontWeight: 700, touchAction: "manipulation" }}
+                    >{st.emoji} {st.label}</button>
+                  );
+                })}
               </div>
             </div>
           ))}
@@ -248,7 +483,7 @@ export default function App() {
     </div>
   );
 
-  // ── REPORTE ──────────────────────────────────────────────────
+  // ── TELA REPORTE ──────────────────────────────────────────────────────────
   if (tela === "reporte") return (
     <div style={{ minHeight: "100vh", background: "#F8FAFC", fontFamily: "Arial, sans-serif" }}>
       <div style={{ background: "linear-gradient(135deg,#0D1F4E,#1B4FD8)", padding: "20px 24px", display: "flex", alignItems: "center", gap: 14 }}>
@@ -282,10 +517,14 @@ export default function App() {
               <label style={{ fontSize: 14, fontWeight: 700, color: "#0D1F4E", display: "block", marginBottom: 8 }}>Título</label>
               <input placeholder="Ex: Buraco na Rua das Flores" value={titulo} onChange={e => setTitulo(e.target.value)} style={inputStyle} />
             </div>
-            <div style={{ marginBottom: 24 }}>
+            <div style={{ marginBottom: 16 }}>
               <label style={{ fontSize: 14, fontWeight: 700, color: "#0D1F4E", display: "block", marginBottom: 8 }}>Descrição</label>
               <textarea placeholder="Descreva o problema..." value={descricao} onChange={e => setDescricao(e.target.value)} rows={4} style={{ ...inputStyle, resize: "vertical" }} />
             </div>
+
+            {/* NOVO: Upload de foto */}
+            <UploadFoto foto={foto} setFoto={setFoto} preview={preview} setPreview={setPreview} />
+
             <Btn onClick={enviarReporte} disabled={enviando}>{enviando ? "Enviando..." : "📤 Enviar Reporte"}</Btn>
           </div>
         )}
@@ -293,7 +532,7 @@ export default function App() {
     </div>
   );
 
-  // ── HOME ─────────────────────────────────────────────────────
+  // ── TELA HOME ─────────────────────────────────────────────────────────────
   if (tela === "home") return (
     <div style={{ minHeight: "100vh", background: "#F8FAFC", fontFamily: "Arial, sans-serif" }}>
       <div style={{ background: "linear-gradient(135deg,#0D1F4E,#1B4FD8)", padding: "20px 24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -312,31 +551,26 @@ export default function App() {
             <div style={{ fontSize: 18, fontWeight: 800, color: "#0D1F4E", marginBottom: 6 }}>Reportar Problema</div>
             <div style={{ fontSize: 13, color: "#64748B" }}>Registre um problema na sua cidade</div>
           </Card>
-          <Card>
+          <Card onClick={() => setTela("meus-chamados")}>
             <div style={{ fontSize: 44, marginBottom: 12 }}>📋</div>
             <div style={{ fontSize: 18, fontWeight: 800, color: "#0D1F4E", marginBottom: 6 }}>Meus Chamados</div>
-            <div style={{ fontSize: 13, color: "#64748B" }}>Acompanhe seus reportes</div>
+            <div style={{ fontSize: 13, color: "#64748B" }}>Acompanhe o status dos seus reportes</div>
           </Card>
         </div>
       </div>
     </div>
   );
 
-  // ── LOGIN / CADASTRO ─────────────────────────────────────────
+  // ── LOGIN / CADASTRO ──────────────────────────────────────────────────────
   return (
     <div style={{ minHeight: "100vh", background: "linear-gradient(135deg,#0D1F4E 0%,#1B4FD8 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Arial, sans-serif", padding: 16 }}>
       <div style={{ background: "white", borderRadius: 24, padding: "40px 32px", width: "100%", maxWidth: 400, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
-
         <div style={{ textAlign: "center", marginBottom: 28 }}>
           <div style={{ fontSize: 44, fontWeight: 900, color: "#0D1F4E", letterSpacing: -1 }}>🏙️ Cívico</div>
         </div>
-
-        {/* Abas */}
         <div style={{ display: "flex", background: "#F1F5F9", borderRadius: 12, padding: 4, marginBottom: 24 }}>
           {[["cidadao", "👤 Cidadão"], ["admin", "🏛️ Administração"]].map(([val, label]) => (
-            <button
-              key={val}
-              onPointerUp={() => { setTipoLogin(val); setErro(""); setTela("login"); }}
+            <button key={val} onPointerUp={() => { setTipoLogin(val); setErro(""); setTela("login"); }}
               style={{
                 flex: 1, padding: "10px 8px", borderRadius: 9, border: "none", cursor: "pointer",
                 fontSize: val === "admin" ? 13 : 14, fontWeight: 700,
@@ -344,20 +578,14 @@ export default function App() {
                 color: tipoLogin === val ? "#0D1F4E" : "#94A3B8",
                 boxShadow: tipoLogin === val ? "0 2px 8px rgba(0,0,0,0.10)" : "none",
                 transition: "all 0.2s",
-                WebkitTapHighlightColor: "transparent",
-                touchAction: "manipulation",
+                WebkitTapHighlightColor: "transparent", touchAction: "manipulation",
               }}
             >{label}</button>
           ))}
         </div>
-
-        {erro && (
-          <div style={{ background: "#FEE2E2", color: "#B91C1C", fontSize: 14, marginBottom: 16, padding: "10px 14px", borderRadius: 10, textAlign: "center" }}>{erro}</div>
-        )}
-
+        {erro && <div style={{ background: "#FEE2E2", color: "#B91C1C", fontSize: 14, marginBottom: 16, padding: "10px 14px", borderRadius: 10, textAlign: "center" }}>{erro}</div>}
         <input placeholder="E-mail" value={email} onChange={e => setEmail(e.target.value)} type="email" style={inputStyle} />
         <input placeholder="Senha" value={senha} onChange={e => setSenha(e.target.value)} type="password" style={{ ...inputStyle, marginBottom: 20 }} />
-
         {tela === "login" ? (
           <>
             <Btn onClick={entrar}>Entrar</Btn>
