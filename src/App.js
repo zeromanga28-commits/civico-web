@@ -342,6 +342,9 @@ export default function App() {
   const [municipios, setMunicipios]   = useState([]);
   const [municipioSel, setMunicipioSel] = useState("");
   const [titulo, setTitulo]           = useState("");
+  const [sugestoes, setSugestoes]     = useState([]);
+  const [buscandoEnd, setBuscandoEnd] = useState(false);
+  const timeoutRef                    = useRef(null);
   const [descricao, setDescricao]     = useState("");
   const [categoria, setCategoria]     = useState("");
   const [foto, setFoto]               = useState(null);
@@ -423,6 +426,21 @@ export default function App() {
       (pos) => setLocalizacao({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
       () => alert("Não foi possível obter localização.")
     );
+  }
+
+  function buscarEndereco(texto) {
+    clearTimeout(timeoutRef.current);
+    if (texto.length < 4) { setSugestoes([]); return; }
+    setBuscandoEnd(true);
+    timeoutRef.current = setTimeout(async () => {
+      try {
+        const cidade = municipio?.nome || "";
+        const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(texto + " " + cidade)}&addressdetails=1`);
+        const data = await res.json();
+        setSugestoes(data.map(d => d.display_name));
+      } catch (e) { setSugestoes([]); }
+      setBuscandoEnd(false);
+    }, 600);
   }
 
   async function enviarReporte() {
@@ -695,9 +713,26 @@ export default function App() {
                 <option value="outro">📌 Outro</option>
               </select>
             </div>
-            <div style={{ marginBottom: 16 }}>
-              <label style={{ fontSize: 14, fontWeight: 700, color: "#0D1F4E", display: "block", marginBottom: 8 }}>Título</label>
-              <input placeholder="Ex: Buraco na Rua das Flores" value={titulo} onChange={e => setTitulo(e.target.value)} style={inputStyle} />
+            <div style={{ marginBottom: 16, position: "relative" }}>
+              <label style={{ fontSize: 14, fontWeight: 700, color: "#0D1F4E", display: "block", marginBottom: 8 }}>
+                Endereço / Título
+                {buscandoEnd && <span style={{ fontSize: 11, color: "#94A3B8", marginLeft: 8 }}>🔍 buscando...</span>}
+              </label>
+              <input
+                placeholder="Ex: Rua das Flores, 123"
+                value={titulo}
+                onChange={e => { setTitulo(e.target.value); buscarEndereco(e.target.value); }}
+                style={{ ...inputStyle, marginBottom: 0 }}
+              />
+              {sugestoes.length > 0 && (
+                <div style={{ position: "absolute", zIndex: 100, background: "white", border: "1.5px solid #E2E8F0", borderRadius: 10, boxShadow: "0 8px 24px rgba(0,0,0,0.12)", width: "100%", maxHeight: 200, overflowY: "auto" }}>
+                  {sugestoes.map((s, i) => (
+                    <div key={i} onPointerDown={() => { setTitulo(s); setSugestoes([]); }}
+                      style={{ padding: "10px 14px", fontSize: 13, color: "#0D1F4E", cursor: "pointer", borderBottom: i < sugestoes.length - 1 ? "1px solid #F1F5F9" : "none" }}
+                    >📍 {s}</div>
+                  ))}
+                </div>
+              )}
             </div>
             <div style={{ marginBottom: 16 }}>
               <label style={{ fontSize: 14, fontWeight: 700, color: "#0D1F4E", display: "block", marginBottom: 8 }}>Descrição</label>
@@ -758,16 +793,29 @@ export default function App() {
   );
 
   // ── LOGIN / CADASTRO ──────────────────────────────────────────────────────
+  const [mostrarSenha, setMostrarSenha] = useState(false);
+  const [lembrar, setLembrar] = useState(false);
+
+  useEffect(() => {
+    const emailSalvo = localStorage.getItem("civico_email");
+    if (emailSalvo) { setEmail(emailSalvo); setLembrar(true); }
+  }, []);
+
+  useEffect(() => {
+    if (lembrar && email) localStorage.setItem("civico_email", email);
+    else if (!lembrar) localStorage.removeItem("civico_email");
+  }, [lembrar, email]);
+
   return (
-    <div style={{ minHeight: "100vh", background: "linear-gradient(135deg,#0D1F4E 0%,#1B4FD8 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Arial, sans-serif", padding: 16 }}>
-      <div style={{ background: "white", borderRadius: 24, padding: "40px 32px", width: "100%", maxWidth: 400, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
-        <div style={{ textAlign: "center", marginBottom: 28 }}>
-          <div style={{ fontSize: 44, fontWeight: 900, color: "#0D1F4E", letterSpacing: -1 }}>🏙️ Cívico</div>
+    <div style={{ height: "100vh", overflow: "hidden", background: "linear-gradient(135deg,#0D1F4E 0%,#1B4FD8 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Arial, sans-serif", padding: 16 }}>
+      <div style={{ background: "white", borderRadius: 24, padding: "32px 28px", width: "100%", maxWidth: 400, boxShadow: "0 20px 60px rgba(0,0,0,0.3)", maxHeight: "96vh", overflowY: "auto" }}>
+        <div style={{ textAlign: "center", marginBottom: 20 }}>
+          <div style={{ fontSize: 40, fontWeight: 900, color: "#0D1F4E", letterSpacing: -1 }}>🏙️ Cívico</div>
           <div style={{ fontSize: 13, color: "#94A3B8", marginTop: 4 }}>A cidade nas suas mãos</div>
         </div>
 
         {/* Seletor de cidade */}
-        <div style={{ marginBottom: 16 }}>
+        <div style={{ marginBottom: 12 }}>
           <label style={{ fontSize: 14, fontWeight: 700, color: "#0D1F4E", display: "block", marginBottom: 8 }}>🏙️ Selecione sua cidade</label>
           <select value={municipioSel} onChange={e => setMunicipioSel(e.target.value)} style={{ ...inputStyle, marginBottom: 0 }}>
             <option value="">Selecione...</option>
@@ -777,7 +825,7 @@ export default function App() {
           </select>
         </div>
 
-        <div style={{ display: "flex", background: "#F1F5F9", borderRadius: 12, padding: 4, marginBottom: 16 }}>
+        <div style={{ display: "flex", background: "#F1F5F9", borderRadius: 12, padding: 4, marginBottom: 12 }}>
           {[["cidadao", "👤 Cidadão"], ["admin", "🏛️ Administração"]].map(([val, label]) => (
             <button key={val} onClick={() => { setTipoLogin(val); setErro(""); setTela("login"); }}
               style={{
@@ -792,9 +840,30 @@ export default function App() {
           ))}
         </div>
 
-        {erro && <div style={{ background: "#FEE2E2", color: "#B91C1C", fontSize: 14, marginBottom: 16, padding: "10px 14px", borderRadius: 10, textAlign: "center" }}>{erro}</div>}
+        {erro && <div style={{ background: "#FEE2E2", color: "#B91C1C", fontSize: 14, marginBottom: 12, padding: "10px 14px", borderRadius: 10, textAlign: "center" }}>{erro}</div>}
+        
         <input placeholder="E-mail" value={email} onChange={e => setEmail(e.target.value)} type="email" style={inputStyle} />
-        <input placeholder="Senha" value={senha} onChange={e => setSenha(e.target.value)} type="password" style={{ ...inputStyle, marginBottom: 20 }} />
+        
+        {/* Campo senha com olhinho */}
+        <div style={{ position: "relative", marginBottom: 8 }}>
+          <input
+            placeholder="Senha"
+            value={senha}
+            onChange={e => setSenha(e.target.value)}
+            type={mostrarSenha ? "text" : "password"}
+            style={{ ...inputStyle, marginBottom: 0, paddingRight: 48 }}
+          />
+          <button
+            onClick={() => setMostrarSenha(!mostrarSenha)}
+            style={{ position: "absolute", right: 14, top: "50%", transform: "translateY(-50%)", background: "none", border: "none", cursor: "pointer", fontSize: 18, color: "#94A3B8" }}
+          >{mostrarSenha ? "🙈" : "👁️"}</button>
+        </div>
+
+        {/* Lembrar email */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+          <input type="checkbox" id="lembrar" checked={lembrar} onChange={e => setLembrar(e.target.checked)} style={{ width: 16, height: 16, cursor: "pointer" }} />
+          <label htmlFor="lembrar" style={{ fontSize: 13, color: "#64748B", cursor: "pointer" }}>Lembrar meu e-mail</label>
+        </div>
 
         {tela === "login" ? (
           <>
