@@ -327,9 +327,9 @@ export default function App() {
   const [erro,setErro]                   = useState("");
   const [usuario,setUsuario]             = useState(null);
   const [municipio,setMunicipio]         = useState(null);
-  const [municipios,setMunicipios]       = useState([]);
+  const [municipios,setMunicipios]       = useState([{ id:"maringa-pr", nome:"Maringá", estado:"PR", ativo:true, adminEmail:"prefeitura@civico.com" }]);
   const [municipioSel,setMunicipioSel]   = useState("");
-  const [carregandoMun,setCarregandoMun] = useState(true);
+  const [carregandoMun,setCarregandoMun] = useState(false);
   const [titulo,setTitulo]               = useState("");
   const [sugestoes,setSugestoes]         = useState([]);
   const [buscandoEnd,setBuscandoEnd]     = useState(false);
@@ -352,8 +352,9 @@ export default function App() {
   const [mostrarSenha,setMostrarSenha]   = useState(false);
   const [lembrar,setLembrar]             = useState(false);
 
-  useEffect(()=>{ const s=localStorage.getItem("civico_email"); if(s){setEmail(s);setLembrar(true);} },[]);
-  useEffect(()=>{ if(lembrar&&email) localStorage.setItem("civico_email",email); else if(!lembrar) localStorage.removeItem("civico_email"); },[lembrar,email]);
+  useEffect(()=>{ const s=localStorage.getItem("civico_email"); if(s) setEmail(s); },[]);
+
+  useEffect(()=>{ if(email) localStorage.setItem("civico_email",email); },[email]);
 
   useEffect(()=>{
     async function load(){
