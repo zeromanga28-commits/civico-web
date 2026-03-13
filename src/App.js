@@ -11,7 +11,6 @@ import {
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
 } from "recharts";
 
-const ADMIN_EMAIL = "prefeitura@civico.com";
 const CLOUDINARY_CLOUD = process.env.REACT_APP_CLOUDINARY_CLOUD;
 const CLOUDINARY_PRESET = process.env.REACT_APP_CLOUDINARY_PRESET;
 
@@ -214,17 +213,14 @@ function MapaChamados({ chamados }) {
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────
 function Dashboard({ chamados }) {
-  // Dados por categoria
   const porCategoria = Object.entries(
     chamados.reduce((acc, c) => { acc[c.categoria] = (acc[c.categoria] || 0) + 1; return acc; }, {})
   ).map(([name, value]) => ({ name, value, fill: CATEGORIA_COR[name] || "#475569" }));
 
-  // Dados por status
   const porStatus = Object.entries(
     chamados.reduce((acc, c) => { acc[c.status] = (acc[c.status] || 0) + 1; return acc; }, {})
   ).map(([name, value]) => ({ name: STATUS[name]?.label || name, value, fill: STATUS[name]?.cor || "#475569" }));
 
-  // Chamados por mês
   const porMes = chamados.reduce((acc, c) => {
     if (!c.criadoEm?.toDate) return acc;
     const d = c.criadoEm.toDate();
@@ -234,13 +230,9 @@ function Dashboard({ chamados }) {
   }, {});
   const dadosMes = Object.entries(porMes).slice(-6).map(([mes, total]) => ({ mes, total }));
 
-  // Tempo médio de resolução (em dias)
   const resolvidos = chamados.filter(c => (c.status === "resolvido" || c.status === "finalizado") && c.criadoEm?.toDate);
   const tempoMedio = resolvidos.length > 0
-    ? (resolvidos.reduce((acc, c) => {
-        const dias = (Date.now() - c.criadoEm.toDate().getTime()) / (1000 * 60 * 60 * 24);
-        return acc + dias;
-      }, 0) / resolvidos.length).toFixed(1)
+    ? (resolvidos.reduce((acc, c) => acc + (Date.now() - c.criadoEm.toDate().getTime()) / (1000 * 60 * 60 * 24), 0) / resolvidos.length).toFixed(1)
     : null;
 
   const cardStyle = { background: "white", borderRadius: 16, padding: 24, boxShadow: "0 2px 10px rgba(0,0,0,0.05)", marginBottom: 20 };
@@ -248,7 +240,6 @@ function Dashboard({ chamados }) {
 
   return (
     <div>
-      {/* KPIs */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 20 }}>
         {[
           { label: "Total de Chamados", valor: chamados.length, cor: "#1B4FD8", emoji: "📋" },
@@ -264,13 +255,9 @@ function Dashboard({ chamados }) {
           </div>
         ))}
       </div>
-
-      {/* Gráfico por categoria */}
       <div style={cardStyle}>
         <div style={tituloGrafico}>📂 Ocorrências por Categoria</div>
-        {porCategoria.length === 0 ? (
-          <div style={{ textAlign: "center", color: "#94A3B8", padding: 40 }}>Sem dados ainda</div>
-        ) : (
+        {porCategoria.length === 0 ? <div style={{ textAlign: "center", color: "#94A3B8", padding: 40 }}>Sem dados ainda</div> : (
           <ResponsiveContainer width="100%" height={240}>
             <BarChart data={porCategoria} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
@@ -284,31 +271,22 @@ function Dashboard({ chamados }) {
           </ResponsiveContainer>
         )}
       </div>
-
-      {/* Gráfico por status */}
       <div style={cardStyle}>
         <div style={tituloGrafico}>📊 Ocorrências por Status</div>
-        {porStatus.length === 0 ? (
-          <div style={{ textAlign: "center", color: "#94A3B8", padding: 40 }}>Sem dados ainda</div>
-        ) : (
+        {porStatus.length === 0 ? <div style={{ textAlign: "center", color: "#94A3B8", padding: 40 }}>Sem dados ainda</div> : (
           <ResponsiveContainer width="100%" height={260}>
             <PieChart>
               <Pie data={porStatus} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
                 {porStatus.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
               </Pie>
-              <Tooltip />
-              <Legend />
+              <Tooltip /><Legend />
             </PieChart>
           </ResponsiveContainer>
         )}
       </div>
-
-      {/* Chamados por mês */}
       <div style={cardStyle}>
         <div style={tituloGrafico}>📅 Chamados por Mês</div>
-        {dadosMes.length === 0 ? (
-          <div style={{ textAlign: "center", color: "#94A3B8", padding: 40 }}>Sem dados ainda</div>
-        ) : (
+        {dadosMes.length === 0 ? <div style={{ textAlign: "center", color: "#94A3B8", padding: 40 }}>Sem dados ainda</div> : (
           <ResponsiveContainer width="100%" height={240}>
             <LineChart data={dadosMes} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
               <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
@@ -360,6 +338,9 @@ export default function App() {
   const [senha, setSenha]             = useState("");
   const [erro, setErro]               = useState("");
   const [usuario, setUsuario]         = useState(null);
+  const [municipio, setMunicipio]     = useState(null);
+  const [municipios, setMunicipios]   = useState([]);
+  const [municipioSel, setMunicipioSel] = useState("");
   const [titulo, setTitulo]           = useState("");
   const [descricao, setDescricao]     = useState("");
   const [categoria, setCategoria]     = useState("");
@@ -377,25 +358,43 @@ export default function App() {
   const [abaPainel, setAbaPainel]             = useState("dashboard");
   const [fotoLightbox, setFotoLightbox]       = useState(null);
 
+  // Carrega municípios ativos
+  useEffect(() => {
+    async function carregarMunicipios() {
+      try {
+        const q = query(collection(db, "municipios"), where("ativo", "==", true));
+        const snap = await getDocs(q);
+        setMunicipios(snap.docs.map(d => ({ id: d.id, ...d.data() })));
+      } catch (e) { console.error(e); }
+    }
+    carregarMunicipios();
+  }, []);
+
+  // ── AUTH ──────────────────────────────────────────────────────────────────
   async function entrar() {
     setErro("");
+    if (!municipioSel) { setErro("Selecione sua cidade."); return; }
     try {
       const result = await signInWithEmailAndPassword(auth, email, senha);
-      const isAdmin = result.user.email === ADMIN_EMAIL;
-      if (tipoLogin === "admin" && !isAdmin)  { await signOut(auth); setErro("Acesso negado."); return; }
+      const munSelecionado = municipios.find(m => m.id === municipioSel);
+      const isAdmin = result.user.email === munSelecionado?.adminEmail;
+      if (tipoLogin === "admin" && !isAdmin) { await signOut(auth); setErro("Acesso negado para este e-mail."); return; }
       if (tipoLogin === "cidadao" && isAdmin) { await signOut(auth); setErro("Use o acesso Administração."); return; }
       setUsuario(result.user);
+      setMunicipio(munSelecionado);
       setTela(isAdmin ? "painel" : "home");
     } catch (e) { setErro("E-mail ou senha incorretos."); }
   }
 
   async function cadastrar() {
     setErro("");
+    if (!municipioSel) { setErro("Selecione sua cidade."); return; }
     if (!email || !senha) { setErro("Preencha e-mail e senha."); return; }
     if (senha.length < 6) { setErro("Senha precisa ter pelo menos 6 caracteres."); return; }
     try {
       const result = await createUserWithEmailAndPassword(auth, email, senha);
       setUsuario(result.user);
+      setMunicipio(municipios.find(m => m.id === municipioSel));
       setTela("home");
     } catch (e) {
       if (e.code === "auth/email-already-in-use") setErro("E-mail já cadastrado.");
@@ -413,7 +412,9 @@ export default function App() {
 
   async function sair() {
     await signOut(auth);
-    setUsuario(null); setEmail(""); setSenha(""); setTela("login");
+    setUsuario(null); setEmail(""); setSenha("");
+    setMunicipio(null); setMunicipioSel("");
+    setTela("login");
   }
 
   function capturarLocalizacao() {
@@ -433,6 +434,8 @@ export default function App() {
       const docRef = await addDoc(collection(db, "chamados"), {
         titulo, descricao, categoria, status: "aberto",
         email: usuario.email, userId: usuario.uid,
+        municipioId: municipio.id,
+        municipioNome: municipio.nome,
         fotoURL: fotoURL || null,
         latitude: localizacao?.latitude || null,
         longitude: localizacao?.longitude || null,
@@ -473,9 +476,10 @@ export default function App() {
   useEffect(() => { if (tela === "meus-chamados") carregarMeusChamados(); }, [tela]);
 
   async function carregarChamados() {
+    if (!municipio) return;
     setCarregando(true);
     try {
-      const q = query(collection(db, "chamados"), orderBy("criadoEm", "desc"));
+      const q = query(collection(db, "chamados"), where("municipioId", "==", municipio.id), orderBy("criadoEm", "desc"));
       const snap = await getDocs(q);
       setChamados(snap.docs.map(d => ({ id: d.id, ...d.data() })));
     } catch (e) { console.error(e); }
@@ -584,7 +588,7 @@ export default function App() {
       <Lightbox src={fotoLightbox} onClose={() => setFotoLightbox(null)} />
       <div style={{ background: "linear-gradient(135deg,#0D1F4E,#1B4FD8)", padding: "20px 24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
-          <div style={{ fontSize: 20, fontWeight: 900, color: "white" }}>🏛️ Administração</div>
+          <div style={{ fontSize: 20, fontWeight: 900, color: "white" }}>🏛️ {municipio?.nome}</div>
           <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)", marginTop: 2 }}>Cívico — Gestão de Chamados</div>
         </div>
         <div style={{ display: "flex", gap: 10 }}>
@@ -592,8 +596,6 @@ export default function App() {
           <button onClick={sair} style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "white", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 13 }}>Sair</button>
         </div>
       </div>
-
-      {/* Abas */}
       <div style={{ background: "white", borderBottom: "1px solid #E2E8F0", display: "flex" }}>
         {[["dashboard","📊 Dashboard"], ["lista","📋 Chamados"], ["mapa","🗺️ Mapa"]].map(([aba, label]) => (
           <button key={aba} onClick={() => setAbaPainel(aba)} style={{
@@ -604,24 +606,14 @@ export default function App() {
           }}>{label}</button>
         ))}
       </div>
-
       <div style={{ padding: "20px 16px", maxWidth: 1100, margin: "0 auto" }}>
-        {/* ABA DASHBOARD */}
-        {abaPainel === "dashboard" && (
-          carregando
-            ? <div style={{ textAlign: "center", padding: 60, color: "#94A3B8" }}>Carregando...</div>
-            : <Dashboard chamados={chamados} />
-        )}
-
-        {/* ABA MAPA */}
+        {abaPainel === "dashboard" && (carregando ? <div style={{ textAlign: "center", padding: 60, color: "#94A3B8" }}>Carregando...</div> : <Dashboard chamados={chamados} />)}
         {abaPainel === "mapa" && (
           <div style={{ background: "white", borderRadius: 16, padding: 20, boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
             <div style={{ fontSize: 16, fontWeight: 700, color: "#0D1F4E", marginBottom: 16 }}>🗺️ Mapa de Ocorrências</div>
             <MapaChamados chamados={chamados} />
           </div>
         )}
-
-        {/* ABA LISTA */}
         {abaPainel === "lista" && (
           <div style={{ background: "white", borderRadius: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.05)", overflow: "hidden" }}>
             <div style={{ background: "#0D1F4E", padding: "14px 20px" }}>
@@ -681,11 +673,14 @@ export default function App() {
           <div style={{ background: "white", borderRadius: 20, padding: 40, textAlign: "center", boxShadow: "0 4px 20px rgba(0,0,0,0.06)" }}>
             <div style={{ fontSize: 64, marginBottom: 16 }}>✅</div>
             <div style={{ fontSize: 22, fontWeight: 900, color: "#0A7C4E", marginBottom: 8 }}>Reporte enviado!</div>
-            <div style={{ fontSize: 15, color: "#64748B", marginBottom: 28 }}>Sua solicitação foi registrada.</div>
+            <div style={{ fontSize: 15, color: "#64748B", marginBottom: 28 }}>Sua solicitação foi registrada em {municipio?.nome}.</div>
             <Btn onClick={() => setSucesso(false)}>Reportar outro</Btn>
           </div>
         ) : (
           <div style={{ background: "white", borderRadius: 20, padding: 24, boxShadow: "0 4px 20px rgba(0,0,0,0.06)" }}>
+            <div style={{ background: "#EEF3FE", borderRadius: 10, padding: "10px 14px", marginBottom: 16 }}>
+              <span style={{ fontSize: 13, color: "#1B4FD8", fontWeight: 700 }}>🏙️ {municipio?.nome} — {municipio?.estado}</span>
+            </div>
             <div style={{ marginBottom: 16 }}>
               <label style={{ fontSize: 14, fontWeight: 700, color: "#0D1F4E", display: "block", marginBottom: 8 }}>Categoria</label>
               <select value={categoria} onChange={e => setCategoria(e.target.value)} style={{ ...inputStyle, marginBottom: 0 }}>
@@ -734,9 +729,11 @@ export default function App() {
   if (tela === "home") return (
     <div style={{ minHeight: "100vh", background: "#F8FAFC", fontFamily: "Arial, sans-serif" }}>
       <div style={{ background: "linear-gradient(135deg,#0D1F4E,#1B4FD8)", padding: "20px 24px", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ fontSize: 22, fontWeight: 900, color: "white" }}>🏙️ Cívico</div>
+        <div>
+          <div style={{ fontSize: 22, fontWeight: 900, color: "white" }}>🏙️ Cívico</div>
+          <div style={{ fontSize: 12, color: "rgba(255,255,255,0.6)" }}>{municipio?.nome} — {municipio?.estado}</div>
+        </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <span style={{ color: "rgba(255,255,255,0.7)", fontSize: 13 }}>{usuario?.email}</span>
           <button onClick={sair} style={{ background: "rgba(255,255,255,0.15)", border: "1px solid rgba(255,255,255,0.3)", color: "white", borderRadius: 8, padding: "8px 14px", cursor: "pointer", fontSize: 13 }}>Sair</button>
         </div>
       </div>
@@ -765,8 +762,21 @@ export default function App() {
       <div style={{ background: "white", borderRadius: 24, padding: "40px 32px", width: "100%", maxWidth: 400, boxShadow: "0 20px 60px rgba(0,0,0,0.3)" }}>
         <div style={{ textAlign: "center", marginBottom: 28 }}>
           <div style={{ fontSize: 44, fontWeight: 900, color: "#0D1F4E", letterSpacing: -1 }}>🏙️ Cívico</div>
+          <div style={{ fontSize: 13, color: "#94A3B8", marginTop: 4 }}>A cidade nas suas mãos</div>
         </div>
-        <div style={{ display: "flex", background: "#F1F5F9", borderRadius: 12, padding: 4, marginBottom: 24 }}>
+
+        {/* Seletor de cidade */}
+        <div style={{ marginBottom: 16 }}>
+          <label style={{ fontSize: 14, fontWeight: 700, color: "#0D1F4E", display: "block", marginBottom: 8 }}>🏙️ Selecione sua cidade</label>
+          <select value={municipioSel} onChange={e => setMunicipioSel(e.target.value)} style={{ ...inputStyle, marginBottom: 0 }}>
+            <option value="">Selecione...</option>
+            {municipios.map(m => (
+              <option key={m.id} value={m.id}>{m.nome} — {m.estado}</option>
+            ))}
+          </select>
+        </div>
+
+        <div style={{ display: "flex", background: "#F1F5F9", borderRadius: 12, padding: 4, marginBottom: 16 }}>
           {[["cidadao", "👤 Cidadão"], ["admin", "🏛️ Administração"]].map(([val, label]) => (
             <button key={val} onClick={() => { setTipoLogin(val); setErro(""); setTela("login"); }}
               style={{
@@ -780,9 +790,11 @@ export default function App() {
             >{label}</button>
           ))}
         </div>
+
         {erro && <div style={{ background: "#FEE2E2", color: "#B91C1C", fontSize: 14, marginBottom: 16, padding: "10px 14px", borderRadius: 10, textAlign: "center" }}>{erro}</div>}
         <input placeholder="E-mail" value={email} onChange={e => setEmail(e.target.value)} type="email" style={inputStyle} />
         <input placeholder="Senha" value={senha} onChange={e => setSenha(e.target.value)} type="password" style={{ ...inputStyle, marginBottom: 20 }} />
+
         {tela === "login" ? (
           <>
             <Btn onClick={entrar}>Entrar</Btn>
