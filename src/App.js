@@ -1,4 +1,4 @@
-aaimport { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { auth, db } from "./firebase";
 import { createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut, sendPasswordResetEmail } from "firebase/auth";
 import {
