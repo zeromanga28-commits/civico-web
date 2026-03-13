@@ -6,7 +6,6 @@ import {
   serverTimestamp, query, orderBy, where
 } from "firebase/firestore";
 import L from "leaflet";
-import "leaflet/dist/leaflet.css";
 
 const ADMIN_EMAIL = "prefeitura@civico.com";
 const CLOUDINARY_CLOUD = "dgyikpjcs";
