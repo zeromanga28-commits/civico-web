@@ -360,6 +360,18 @@ export default function App() {
   const [obsStatus, setObsStatus]             = useState("");
   const [abaPainel, setAbaPainel]             = useState("dashboard");
   const [fotoLightbox, setFotoLightbox]       = useState(null);
+  const [mostrarSenha, setMostrarSenha]       = useState(false);
+  const [lembrar, setLembrar]                 = useState(false);
+
+  // Lembrar email
+  useEffect(() => {
+    const emailSalvo = localStorage.getItem("civico_email");
+    if (emailSalvo) { setEmail(emailSalvo); setLembrar(true); }
+  }, []);
+  useEffect(() => {
+    if (lembrar && email) localStorage.setItem("civico_email", email);
+    else if (!lembrar) localStorage.removeItem("civico_email");
+  }, [lembrar, email]);
 
   // Carrega municípios ativos
   useEffect(() => {
@@ -793,19 +805,6 @@ export default function App() {
   );
 
   // ── LOGIN / CADASTRO ──────────────────────────────────────────────────────
-  const [mostrarSenha, setMostrarSenha] = useState(false);
-  const [lembrar, setLembrar] = useState(false);
-
-  useEffect(() => {
-    const emailSalvo = localStorage.getItem("civico_email");
-    if (emailSalvo) { setEmail(emailSalvo); setLembrar(true); }
-  }, []);
-
-  useEffect(() => {
-    if (lembrar && email) localStorage.setItem("civico_email", email);
-    else if (!lembrar) localStorage.removeItem("civico_email");
-  }, [lembrar, email]);
-
   return (
     <div style={{ height: "100vh", overflow: "hidden", background: "linear-gradient(135deg,#0D1F4E 0%,#1B4FD8 100%)", display: "flex", alignItems: "center", justifyContent: "center", fontFamily: "Arial, sans-serif", padding: 16 }}>
       <div style={{ background: "white", borderRadius: 24, padding: "32px 28px", width: "100%", maxWidth: 400, boxShadow: "0 20px 60px rgba(0,0,0,0.3)", maxHeight: "96vh", overflowY: "auto" }}>
