@@ -1,104 +1,192 @@
-# 🏙️ Cívico — Plataforma de Gestão Urbana Participativa
+# 🏙️ Cívico
 
-> **A cidade nas suas mãos.**
+> **A cidade nas suas mãos**  
+> Plataforma SaaS B2G de gestão urbana para municípios brasileiros.
 
-# Cívico
-
-Plataforma digital para gestão de ocorrências urbanas e comunicação entre cidadãos e prefeituras.
-
-## Problema
-Cidades muitas vezes não possuem canais eficientes para registrar e acompanhar problemas urbanos.
-
-## Solução
-O Cívico permite que cidadãos reportem ocorrências e que a administração municipal gerencie demandas de forma organizada.
-
-## Funcionalidades
-- Registro de ocorrências
-- Painel administrativo
-- Sistema de usuários
-- Dashboard de gestão
+🌐 **Acesse:** [civico-web.vercel.app](https://civico-web.vercel.app)
 
 ---
 
-## 📌 Sobre o Projeto
+## 📋 Sobre o Projeto
 
-O **Cívico** nasceu de uma constatação simples: mais de **70% dos municípios brasileiros** não têm nenhum sistema digital para receber e tratar demandas dos cidadãos.
+O Cívico é uma plataforma que conecta cidadãos e prefeituras, permitindo que moradores reportem problemas urbanos e acompanhem o status de atendimento em tempo real.
 
-O resultado? Ligações que ninguém atende. E-mails sem resposta. Problemas que ficam meses sem solução.
-
-O Cívico resolve isso.
+**Modelo de negócio:** B2G (Business to Government) — SaaS vendido para municípios brasileiros.
 
 ---
 
-## ✨ Funcionalidades
+## ✅ Funcionalidades
 
-### 👤 Para o Cidadão
-- 📸 Reporte problemas urbanos com foto
-- 📍 Geolocalização automática
-- 🔔 Notificações de andamento em tempo real
-- 🏆 Ranking de participação cívica
-- ✅ Sempre **gratuito**
+### Cidadão
+- 📱 Cadastro e login
+- 📸 Reporte de problemas com foto, descrição e GPS
+- 📋 Acompanhamento de chamados com timeline de status
+- 🔍 Histórico detalhado de cada ocorrência
 
-### 🏛️ Para a Prefeitura
-- 📋 Painel central de chamados por secretaria
-- 🗺️ Mapa georreferenciado de ocorrências
-- 💬 Chat direto com o cidadão
-- 📊 Relatórios automáticos mensais
-- 🌐 Portal de transparência pública
+### Administração (Prefeitura)
+- 📊 Dashboard com KPIs e gráficos (Recharts)
+- 📋 Lista de chamados com mudança de status
+- 🗺️ Mapa de ocorrências (Leaflet + OpenStreetMap)
+- 🔍 Lightbox para visualização de fotos
+- 🏙️ Multi-tenant por município
 
----
-
-## 🛠️ Stack Tecnológico
-
-| Camada | Tecnologia |
-|--------|-----------|
-| Frontend | React · Tailwind CSS |
-| Backend | Firebase (Firestore + Auth + Storage) |
-| Mapas | Leaflet.js · OpenStreetMap |
-| Hospedagem | Vercel |
-| DevOps | GitHub · GitHub Actions |
+### Sistema
+- 🔐 Autenticação Firebase (cidadão + admin)
+- 🌆 Seletor de cidade na tela de login
+- 👁️ Mostrar/esconder senha
+- 💾 Lembrar e-mail automaticamente
+- 📍 Captura de localização GPS
+- 🔒 Regras de segurança Firestore
 
 ---
 
-## 📁 Repositórios
+## 🛠️ Stack
 
-| Repositório | Descrição | Status |
-|-------------|-----------|--------|
-| [civico-web](https://github.com/Civico-App/civico-web) | Frontend do app e painel admin | 🚧 Em desenvolvimento |
-| civico-api | Backend e API REST | 📝 Planejado |
-| civico-docs | Documentação e guias | 📝 Planejado |
-
----
-
-## 💰 Modelo de Negócio
-
-| Plano | Preço/mês | Inclui |
-|-------|-----------|--------|
-| Básico | R$ 800–1.500 | Até 5.000 cidadãos · Módulos essenciais |
-| Profissional | R$ 1.500–3.000 | Ilimitado · Módulos completos · Relatórios |
-| Enterprise | R$ 3.000+ | Multi-secretaria · API · SLA dedicado |
-
-> Para o cidadão: sempre gratuito.
+| Tecnologia | Uso |
+|---|---|
+| React | Frontend |
+| Firebase Auth | Autenticação |
+| Firestore | Banco de dados |
+| Cloudinary | Upload de fotos |
+| Leaflet + OpenStreetMap | Mapa de ocorrências |
+| Recharts | Gráficos do dashboard |
+| Vercel | Hospedagem |
 
 ---
 
-## 🚀 Roadmap
+## 📁 Estrutura
 
-- [x] Identidade visual e branding
-- [x] Protótipo das telas
-- [ ] MVP — Fase 1 (cadastro + reporte + painel básico)
-- [ ] MVP — Fase 2 (mapa + notificações + chat)
-- [ ] Piloto com primeira prefeitura parceira
-- [ ] Lançamento oficial
+```
+civico-web/
+├── public/
+│   └── index.html          # Inclui CSS do Leaflet via CDN
+├── src/
+│   ├── App.js              # Componente principal (toda a lógica)
+│   └── firebase.js         # Configuração do Firebase
+├── .env                    # Variáveis de ambiente (não commitado)
+└── .gitignore
+```
 
 ---
 
-## 📬 Contato
+## ⚙️ Variáveis de Ambiente
+
+Crie um arquivo `.env` na raiz do projeto:
+
+```env
+REACT_APP_FIREBASE_API_KEY=...
+REACT_APP_FIREBASE_AUTH_DOMAIN=...
+REACT_APP_FIREBASE_PROJECT_ID=...
+REACT_APP_FIREBASE_MESSAGING_SENDER_ID=...
+REACT_APP_FIREBASE_APP_ID=...
+REACT_APP_CLOUDINARY_CLOUD=...
+REACT_APP_CLOUDINARY_PRESET=...
+```
+
+---
+
+## 🚀 Como rodar localmente
+
+```bash
+# Instalar dependências
+npm install
+
+# Rodar em desenvolvimento
+npm start
+
+# Build para produção
+npm run build
+```
+
+> ⚠️ Use **CMD** (não PowerShell) no Windows para evitar erros com npm.
+
+---
+
+## 🔥 Firestore — Regras de Segurança
+
+```
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /municipios/{municipioId} {
+      allow read: if true;
+      allow write: if false;
+    }
+    match /chamados/{chamadoId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null;
+      allow update: if request.auth != null;
+      match /historico/{docId} {
+        allow read: if request.auth != null;
+        allow create: if request.auth != null;
+      }
+    }
+  }
+}
+```
+
+---
+
+## 🏙️ Multi-tenant
+
+Cada município é cadastrado na coleção `municipios` no Firestore:
+
+```json
+{
+  "id": "maringa-pr",
+  "nome": "Maringá",
+  "estado": "PR",
+  "ativo": true,
+  "adminEmail": "prefeitura@civico.com"
+}
+```
+
+---
+
+## 📊 Status de Chamados
+
+| Status | Descrição |
+|---|---|
+| 🔴 Aberto | Recém registrado |
+| 🔵 Em análise | Em avaliação pela prefeitura |
+| 🟡 Em atendimento | Equipe enviada ao local |
+| 🟢 Resolvido | Problema solucionado |
+| ⚫ Finalizado | Encerrado definitivamente |
+
+---
+
+## 💰 Planos
+
+| Plano | Preço/mês |
+|---|---|
+| Básico | R$ 800 – 1.500 |
+| Profissional | R$ 1.500 – 3.000 |
+| Enterprise | R$ 3.000+ |
+
+---
+
+## 📱 Redes Sociais
 
 - Instagram: [@somos.civico](https://instagram.com/somos.civico)
-- GitHub: [github.com/Civico-App](https://github.com/Civico-App)
+- GitHub: [somos-civico](https://github.com/somos-civico)
 
 ---
 
-<p align="center">Feito com 🏙️ para cidades brasileiras.</p>
-<p align="center"><strong>Cívico — A cidade nas suas mãos.</strong></p>
+## 📌 Roadmap
+
+- [x] Login / Cadastro / Esqueci senha
+- [x] Reporte com foto e GPS
+- [x] Sistema de status com histórico
+- [x] Meus chamados com timeline
+- [x] Mapa de ocorrências
+- [x] Dashboard administrativo
+- [x] Lightbox de fotos
+- [x] Multi-tenant por município
+- [x] Polimento visual
+- [ ] Notificações por email
+- [ ] App nativo (React Native)
+- [ ] Domínio civico.com.br
+
+---
+
+*Cívico — A cidade nas suas mãos* 🏙️
