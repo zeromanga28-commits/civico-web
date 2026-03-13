@@ -6,10 +6,14 @@ import {
   serverTimestamp, query, orderBy, where
 } from "firebase/firestore";
 import L from "leaflet";
+import {
+  BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,
+  XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer
+} from "recharts";
 
 const ADMIN_EMAIL = "prefeitura@civico.com";
-const CLOUDINARY_CLOUD = "dgyikpjcs";
-const CLOUDINARY_PRESET = "jnr0m04h";
+const CLOUDINARY_CLOUD = process.env.REACT_APP_CLOUDINARY_CLOUD;
+const CLOUDINARY_PRESET = process.env.REACT_APP_CLOUDINARY_PRESET;
 
 const STATUS = {
   aberto:           { label: "Aberto",          emoji: "🔴", cor: "#B91C1C", bg: "#FEE2E2" },
@@ -29,6 +33,8 @@ const CATEGORIA_COR = {
   esgoto:     "#0E7490",
   outro:      "#475569",
 };
+
+const MESES = ["Jan","Fev","Mar","Abr","Mai","Jun","Jul","Ago","Set","Out","Nov","Dez"];
 
 // ── COMPONENTES ───────────────────────────────────────────────────────────
 function Btn({ onClick, children, color = "blue", disabled = false }) {
@@ -129,31 +135,23 @@ function UploadFoto({ foto, setFoto, preview, setPreview }) {
   function handleArquivo(e) {
     const arquivo = e.target.files[0];
     if (!arquivo) return;
-    if (!["image/jpeg", "image/png"].includes(arquivo.type)) {
-      alert("Apenas arquivos JPG e PNG são aceitos.");
-      return;
-    }
-    if (arquivo.size > 5 * 1024 * 1024) {
-      alert("A imagem deve ter no máximo 5MB.");
-      return;
-    }
+    if (!["image/jpeg", "image/png"].includes(arquivo.type)) { alert("Apenas JPG e PNG."); return; }
+    if (arquivo.size > 5 * 1024 * 1024) { alert("Máximo 5MB."); return; }
     setFoto(arquivo);
     const reader = new FileReader();
     reader.onload = (ev) => setPreview(ev.target.result);
     reader.readAsDataURL(arquivo);
   }
-
   return (
     <div style={{ marginBottom: 20 }}>
       <label style={{ fontSize: 14, fontWeight: 700, color: "#0D1F4E", display: "block", marginBottom: 8 }}>
-        📷 Foto do problema <span style={{ fontSize: 12, color: "#94A3B8", fontWeight: 400 }}>(opcional · JPG/PNG · máx 5MB)</span>
+        📷 Foto <span style={{ fontSize: 12, color: "#94A3B8", fontWeight: 400 }}>(opcional · JPG/PNG · máx 5MB)</span>
       </label>
       {preview ? (
         <div style={{ position: "relative" }}>
           <img src={preview} alt="preview" style={{ width: "100%", borderRadius: 12, maxHeight: 220, objectFit: "cover", border: "2px solid #E2E8F0" }} />
           <button onClick={() => { setFoto(null); setPreview(null); }}
-            style={{ position: "absolute", top: 8, right: 8, background: "#B91C1C", color: "white", border: "none", borderRadius: 20, width: 28, height: 28, cursor: "pointer", fontSize: 16, fontWeight: 700 }}
-          >×</button>
+            style={{ position: "absolute", top: 8, right: 8, background: "#B91C1C", color: "white", border: "none", borderRadius: 20, width: 28, height: 28, cursor: "pointer", fontSize: 16, fontWeight: 700 }}>×</button>
         </div>
       ) : (
         <label style={{ display: "block", border: "2px dashed #CBD5E1", borderRadius: 12, padding: "28px 16px", textAlign: "center", cursor: "pointer", background: "#F8FAFC" }}>
@@ -174,76 +172,154 @@ function MapaChamados({ chamados }) {
 
   useEffect(() => {
     if (mapInstanceRef.current) return;
-
-    // Centro padrão: Brasil
     mapInstanceRef.current = L.map(mapRef.current).setView([-15.7801, -47.9292], 5);
-
     L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
-      attribution: '© OpenStreetMap contributors'
+      attribution: "© OpenStreetMap contributors"
     }).addTo(mapInstanceRef.current);
-
     return () => {
-      if (mapInstanceRef.current) {
-        mapInstanceRef.current.remove();
-        mapInstanceRef.current = null;
-      }
+      if (mapInstanceRef.current) { mapInstanceRef.current.remove(); mapInstanceRef.current = null; }
     };
   }, []);
 
   useEffect(() => {
     if (!mapInstanceRef.current) return;
-
-    // Remove marcadores antigos
-    mapInstanceRef.current.eachLayer(layer => {
-      if (layer instanceof L.Marker) layer.remove();
-    });
-
+    mapInstanceRef.current.eachLayer(layer => { if (layer instanceof L.Marker) layer.remove(); });
     const validos = chamados.filter(c => c.latitude && c.longitude);
     if (validos.length === 0) return;
-
     validos.forEach(c => {
       const cor = CATEGORIA_COR[c.categoria] || "#475569";
-      const svgIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="38" viewBox="0 0 28 38">
-        <path d="M14 0C6.268 0 0 6.268 0 14c0 9.333 14 24 14 24s14-14.667 14-24C28 6.268 21.732 0 14 0z" fill="${cor}"/>
-        <circle cx="14" cy="14" r="6" fill="white"/>
-      </svg>`;
-      const icon = L.divIcon({
-        html: svgIcon, className: "", iconSize: [28, 38], iconAnchor: [14, 38],
-      });
-
+      const svgIcon = `<svg xmlns="http://www.w3.org/2000/svg" width="28" height="38" viewBox="0 0 28 38"><path d="M14 0C6.268 0 0 6.268 0 14c0 9.333 14 24 14 24s14-14.667 14-24C28 6.268 21.732 0 14 0z" fill="${cor}"/><circle cx="14" cy="14" r="6" fill="white"/></svg>`;
+      const icon = L.divIcon({ html: svgIcon, className: "", iconSize: [28, 38], iconAnchor: [14, 38] });
       const s = STATUS[c.status] || STATUS["aberto"];
-      const popup = `
-        <div style="min-width:200px;font-family:Arial,sans-serif">
-          <div style="font-weight:700;font-size:14px;color:#0D1F4E;margin-bottom:6px">${c.titulo}</div>
-          <div style="font-size:12px;color:#64748B;margin-bottom:6px">${c.descricao}</div>
-          <div style="font-size:11px;color:#94A3B8;margin-bottom:4px">📂 ${c.categoria}</div>
-          <span style="background:${s.bg};color:${s.cor};font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px">${s.emoji} ${s.label}</span>
-          ${c.fotoURL ? `<br/><img src="${c.fotoURL}" style="width:100%;border-radius:6px;margin-top:8px;max-height:120px;object-fit:cover"/>` : ""}
-        </div>
-      `;
+      const popup = `<div style="min-width:200px;font-family:Arial,sans-serif"><div style="font-weight:700;font-size:14px;color:#0D1F4E;margin-bottom:6px">${c.titulo}</div><div style="font-size:12px;color:#64748B;margin-bottom:6px">${c.descricao}</div><span style="background:${s.bg};color:${s.cor};font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px">${s.emoji} ${s.label}</span>${c.fotoURL ? `<br/><img src="${c.fotoURL}" style="width:100%;border-radius:6px;margin-top:8px;max-height:120px;object-fit:cover"/>` : ""}</div>`;
       L.marker([c.latitude, c.longitude], { icon }).addTo(mapInstanceRef.current).bindPopup(popup);
     });
-
-    // Centraliza no primeiro marcador
     mapInstanceRef.current.setView([validos[0].latitude, validos[0].longitude], 13);
   }, [chamados]);
 
   return (
     <div>
-      {/* Legenda */}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 12 }}>
         {Object.entries(CATEGORIA_COR).map(([cat, cor]) => (
-          <span key={cat} style={{ background: cor + "22", color: cor, fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 20, border: `1px solid ${cor}44` }}>
-            ● {cat}
-          </span>
+          <span key={cat} style={{ background: cor + "22", color: cor, fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 20, border: `1px solid ${cor}44` }}>● {cat}</span>
         ))}
       </div>
       <div ref={mapRef} style={{ width: "100%", height: 460, borderRadius: 16, overflow: "hidden", border: "2px solid #E2E8F0" }} />
       {chamados.filter(c => c.latitude && c.longitude).length === 0 && (
-        <div style={{ textAlign: "center", color: "#94A3B8", fontSize: 13, marginTop: 12 }}>
-          Nenhum chamado com localização ainda.
-        </div>
+        <div style={{ textAlign: "center", color: "#94A3B8", fontSize: 13, marginTop: 12 }}>Nenhum chamado com localização ainda.</div>
       )}
+    </div>
+  );
+}
+
+// ── DASHBOARD ─────────────────────────────────────────────────────────────
+function Dashboard({ chamados }) {
+  // Dados por categoria
+  const porCategoria = Object.entries(
+    chamados.reduce((acc, c) => { acc[c.categoria] = (acc[c.categoria] || 0) + 1; return acc; }, {})
+  ).map(([name, value]) => ({ name, value, fill: CATEGORIA_COR[name] || "#475569" }));
+
+  // Dados por status
+  const porStatus = Object.entries(
+    chamados.reduce((acc, c) => { acc[c.status] = (acc[c.status] || 0) + 1; return acc; }, {})
+  ).map(([name, value]) => ({ name: STATUS[name]?.label || name, value, fill: STATUS[name]?.cor || "#475569" }));
+
+  // Chamados por mês
+  const porMes = chamados.reduce((acc, c) => {
+    if (!c.criadoEm?.toDate) return acc;
+    const d = c.criadoEm.toDate();
+    const key = `${MESES[d.getMonth()]}/${d.getFullYear().toString().slice(2)}`;
+    acc[key] = (acc[key] || 0) + 1;
+    return acc;
+  }, {});
+  const dadosMes = Object.entries(porMes).slice(-6).map(([mes, total]) => ({ mes, total }));
+
+  // Tempo médio de resolução (em dias)
+  const resolvidos = chamados.filter(c => (c.status === "resolvido" || c.status === "finalizado") && c.criadoEm?.toDate);
+  const tempoMedio = resolvidos.length > 0
+    ? (resolvidos.reduce((acc, c) => {
+        const dias = (Date.now() - c.criadoEm.toDate().getTime()) / (1000 * 60 * 60 * 24);
+        return acc + dias;
+      }, 0) / resolvidos.length).toFixed(1)
+    : null;
+
+  const cardStyle = { background: "white", borderRadius: 16, padding: 24, boxShadow: "0 2px 10px rgba(0,0,0,0.05)", marginBottom: 20 };
+  const tituloGrafico = { fontSize: 15, fontWeight: 700, color: "#0D1F4E", marginBottom: 16 };
+
+  return (
+    <div>
+      {/* KPIs */}
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 20 }}>
+        {[
+          { label: "Total de Chamados", valor: chamados.length, cor: "#1B4FD8", emoji: "📋" },
+          { label: "Em Aberto", valor: chamados.filter(c => c.status === "aberto").length, cor: "#B91C1C", emoji: "🔴" },
+          { label: "Em Andamento", valor: chamados.filter(c => c.status === "em analise" || c.status === "em atendimento").length, cor: "#B45309", emoji: "🟡" },
+          { label: "Resolvidos", valor: chamados.filter(c => c.status === "resolvido" || c.status === "finalizado").length, cor: "#0A7C4E", emoji: "🟢" },
+          { label: "Tempo Médio (dias)", valor: tempoMedio || "—", cor: "#7C3AED", emoji: "⏱️" },
+        ].map((k, i) => (
+          <div key={i} style={{ background: "white", borderRadius: 14, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.05)", borderTop: `4px solid ${k.cor}` }}>
+            <div style={{ fontSize: 24, marginBottom: 4 }}>{k.emoji}</div>
+            <div style={{ fontSize: 26, fontWeight: 900, color: k.cor }}>{k.valor}</div>
+            <div style={{ fontSize: 12, color: "#64748B" }}>{k.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Gráfico por categoria */}
+      <div style={cardStyle}>
+        <div style={tituloGrafico}>📂 Ocorrências por Categoria</div>
+        {porCategoria.length === 0 ? (
+          <div style={{ textAlign: "center", color: "#94A3B8", padding: 40 }}>Sem dados ainda</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={240}>
+            <BarChart data={porCategoria} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
+              <XAxis dataKey="name" tick={{ fontSize: 12 }} />
+              <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
+              <Tooltip />
+              <Bar dataKey="value" name="Chamados" radius={[6, 6, 0, 0]}>
+                {porCategoria.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* Gráfico por status */}
+      <div style={cardStyle}>
+        <div style={tituloGrafico}>📊 Ocorrências por Status</div>
+        {porStatus.length === 0 ? (
+          <div style={{ textAlign: "center", color: "#94A3B8", padding: 40 }}>Sem dados ainda</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={260}>
+            <PieChart>
+              <Pie data={porStatus} dataKey="value" nameKey="name" cx="50%" cy="50%" outerRadius={90} label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}>
+                {porStatus.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
+              </Pie>
+              <Tooltip />
+              <Legend />
+            </PieChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      {/* Chamados por mês */}
+      <div style={cardStyle}>
+        <div style={tituloGrafico}>📅 Chamados por Mês</div>
+        {dadosMes.length === 0 ? (
+          <div style={{ textAlign: "center", color: "#94A3B8", padding: 40 }}>Sem dados ainda</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={240}>
+            <LineChart data={dadosMes} margin={{ top: 5, right: 10, left: -20, bottom: 5 }}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#F1F5F9" />
+              <XAxis dataKey="mes" tick={{ fontSize: 12 }} />
+              <YAxis tick={{ fontSize: 12 }} allowDecimals={false} />
+              <Tooltip />
+              <Line type="monotone" dataKey="total" name="Chamados" stroke="#1B4FD8" strokeWidth={3} dot={{ fill: "#1B4FD8", r: 5 }} />
+            </LineChart>
+          </ResponsiveContainer>
+        )}
+      </div>
     </div>
   );
 }
@@ -252,9 +328,7 @@ async function uploadCloudinary(arquivo) {
   const formData = new FormData();
   formData.append("file", arquivo);
   formData.append("upload_preset", CLOUDINARY_PRESET);
-  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`, {
-    method: "POST", body: formData,
-  });
+  const res = await fetch(`https://api.cloudinary.com/v1_1/${CLOUDINARY_CLOUD}/image/upload`, { method: "POST", body: formData });
   const data = await res.json();
   if (!data.secure_url) throw new Error("Erro no upload");
   return data.secure_url;
@@ -289,15 +363,14 @@ export default function App() {
   const [chamadoDetalhe, setChamadoDetalhe]   = useState(null);
   const [historicoDetalhe, setHistoricoDetalhe] = useState([]);
   const [obsStatus, setObsStatus]             = useState("");
-  const [abaPainel, setAbaPainel]             = useState("lista");
+  const [abaPainel, setAbaPainel]             = useState("dashboard");
 
-  // ── AUTH ──────────────────────────────────────────────────────────────────
   async function entrar() {
     setErro("");
     try {
       const result = await signInWithEmailAndPassword(auth, email, senha);
       const isAdmin = result.user.email === ADMIN_EMAIL;
-      if (tipoLogin === "admin" && !isAdmin)  { await signOut(auth); setErro("Acesso negado para este e-mail."); return; }
+      if (tipoLogin === "admin" && !isAdmin)  { await signOut(auth); setErro("Acesso negado."); return; }
       if (tipoLogin === "cidadao" && isAdmin) { await signOut(auth); setErro("Use o acesso Administração."); return; }
       setUsuario(result.user);
       setTela(isAdmin ? "painel" : "home");
@@ -313,7 +386,7 @@ export default function App() {
       setUsuario(result.user);
       setTela("home");
     } catch (e) {
-      if (e.code === "auth/email-already-in-use") setErro("Este e-mail já está cadastrado.");
+      if (e.code === "auth/email-already-in-use") setErro("E-mail já cadastrado.");
       else setErro("Erro ao cadastrar. Tente novamente.");
     }
   }
@@ -322,26 +395,23 @@ export default function App() {
     if (!email) { setErro("Digite seu e-mail primeiro."); return; }
     try {
       await sendPasswordResetEmail(auth, email);
-      alert("E-mail de redefinição enviado! Verifique sua caixa de entrada.");
+      alert("E-mail de redefinição enviado!");
     } catch (e) { setErro("E-mail não encontrado."); }
   }
 
   async function sair() {
     await signOut(auth);
-    setUsuario(null); setEmail(""); setSenha("");
-    setTela("login");
+    setUsuario(null); setEmail(""); setSenha(""); setTela("login");
   }
 
-  // ── LOCALIZAÇÃO ───────────────────────────────────────────────────────────
   function capturarLocalizacao() {
-    if (!navigator.geolocation) { alert("Seu dispositivo não suporta geolocalização."); return; }
+    if (!navigator.geolocation) { alert("Dispositivo não suporta geolocalização."); return; }
     navigator.geolocation.getCurrentPosition(
       (pos) => setLocalizacao({ latitude: pos.coords.latitude, longitude: pos.coords.longitude }),
-      () => alert("Não foi possível obter a localização. Verifique as permissões.")
+      () => alert("Não foi possível obter localização.")
     );
   }
 
-  // ── REPORTE ───────────────────────────────────────────────────────────────
   async function enviarReporte() {
     if (!titulo || !descricao || !categoria) { alert("Preencha todos os campos!"); return; }
     setEnviando(true);
@@ -357,17 +427,15 @@ export default function App() {
         criadoEm: serverTimestamp()
       });
       await addDoc(collection(db, "chamados", docRef.id, "historico"), {
-        status: "aberto", obs: "Ocorrência registrada pelo cidadão.",
-        criadoEm: serverTimestamp()
+        status: "aberto", obs: "Ocorrência registrada pelo cidadão.", criadoEm: serverTimestamp()
       });
       setSucesso(true);
       setTitulo(""); setDescricao(""); setCategoria("");
       setFoto(null); setPreview(null); setLocalizacao(null);
-    } catch (e) { alert("Erro ao enviar. Tente novamente."); console.error(e); }
+    } catch (e) { alert("Erro ao enviar."); console.error(e); }
     setEnviando(false);
   }
 
-  // ── MEUS CHAMADOS ─────────────────────────────────────────────────────────
   async function carregarMeusChamados() {
     if (!usuario) return;
     setCarregando(true);
@@ -392,7 +460,6 @@ export default function App() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { if (tela === "meus-chamados") carregarMeusChamados(); }, [tela]);
 
-  // ── PAINEL ADMIN ──────────────────────────────────────────────────────────
   async function carregarChamados() {
     setCarregando(true);
     try {
@@ -409,14 +476,13 @@ export default function App() {
       await addDoc(collection(db, "chamados", id, "historico"), {
         status: novoStatus, obs: obsStatus || "", criadoEm: serverTimestamp()
       });
-      setObsStatus("");
-      carregarChamados();
+      setObsStatus(""); carregarChamados();
     } catch (e) { alert("Erro ao atualizar status."); }
   }
 
   useEffect(() => { if (tela === "painel") carregarChamados(); }, [tela]);
 
-  // ── TELA DETALHE ──────────────────────────────────────────────────────────
+  // ── DETALHE ───────────────────────────────────────────────────────────────
   if (tela === "detalhe" && chamadoDetalhe) return (
     <div style={{ minHeight: "100vh", background: "#F8FAFC", fontFamily: "Arial, sans-serif" }}>
       <div style={{ background: "linear-gradient(135deg,#0D1F4E,#1B4FD8)", padding: "20px 24px", display: "flex", alignItems: "center", gap: 14 }}>
@@ -459,7 +525,7 @@ export default function App() {
     </div>
   );
 
-  // ── TELA MEUS CHAMADOS ────────────────────────────────────────────────────
+  // ── MEUS CHAMADOS ─────────────────────────────────────────────────────────
   if (tela === "meus-chamados") return (
     <div style={{ minHeight: "100vh", background: "#F8FAFC", fontFamily: "Arial, sans-serif" }}>
       <div style={{ background: "linear-gradient(135deg,#0D1F4E,#1B4FD8)", padding: "20px 24px", display: "flex", alignItems: "center", gap: 14 }}>
@@ -514,11 +580,11 @@ export default function App() {
         </div>
       </div>
 
-      {/* Abas do painel */}
+      {/* Abas */}
       <div style={{ background: "white", borderBottom: "1px solid #E2E8F0", display: "flex" }}>
-        {[["lista", "📋 Chamados"], ["mapa", "🗺️ Mapa"]].map(([aba, label]) => (
+        {[["dashboard","📊 Dashboard"], ["lista","📋 Chamados"], ["mapa","🗺️ Mapa"]].map(([aba, label]) => (
           <button key={aba} onClick={() => setAbaPainel(aba)} style={{
-            padding: "14px 24px", border: "none", cursor: "pointer", fontSize: 14, fontWeight: 700,
+            padding: "14px 20px", border: "none", cursor: "pointer", fontSize: 13, fontWeight: 700,
             background: "transparent",
             color: abaPainel === aba ? "#1B4FD8" : "#94A3B8",
             borderBottom: abaPainel === aba ? "3px solid #1B4FD8" : "3px solid transparent",
@@ -527,19 +593,12 @@ export default function App() {
       </div>
 
       <div style={{ padding: "20px 16px", maxWidth: 1100, margin: "0 auto" }}>
-        {/* Stats */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12, marginBottom: 20 }}>
-          {[
-            { label: "Total",      valor: chamados.length, cor: "#1B4FD8" },
-            { label: "Em Aberto",  valor: chamados.filter(c => c.status === "aberto").length, cor: "#B91C1C" },
-            { label: "Resolvidos", valor: chamados.filter(c => c.status === "resolvido" || c.status === "finalizado").length, cor: "#0A7C4E" },
-          ].map((s, i) => (
-            <div key={i} style={{ background: "white", borderRadius: 14, padding: 16, boxShadow: "0 2px 10px rgba(0,0,0,0.05)" }}>
-              <div style={{ fontSize: 28, fontWeight: 900, color: s.cor }}>{s.valor}</div>
-              <div style={{ fontSize: 13, color: "#64748B" }}>{s.label}</div>
-            </div>
-          ))}
-        </div>
+        {/* ABA DASHBOARD */}
+        {abaPainel === "dashboard" && (
+          carregando
+            ? <div style={{ textAlign: "center", padding: 60, color: "#94A3B8" }}>Carregando...</div>
+            : <Dashboard chamados={chamados} />
+        )}
 
         {/* ABA MAPA */}
         {abaPainel === "mapa" && (
@@ -577,12 +636,7 @@ export default function App() {
                   </div>
                 )}
                 <div style={{ fontSize: 12, color: "#94A3B8", marginBottom: 10 }}>👤 {c.email}</div>
-                <input
-                  placeholder="Observação (opcional)"
-                  value={obsStatus}
-                  onChange={e => setObsStatus(e.target.value)}
-                  style={{ ...inputStyle, fontSize: 13, padding: "8px 12px", marginBottom: 8 }}
-                />
+                <input placeholder="Observação (opcional)" value={obsStatus} onChange={e => setObsStatus(e.target.value)} style={{ ...inputStyle, fontSize: 13, padding: "8px 12px", marginBottom: 8 }} />
                 <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                   {FLUXO_STATUS.filter(s => s !== c.status).map(s => {
                     const st = STATUS[s];
@@ -601,7 +655,7 @@ export default function App() {
     </div>
   );
 
-  // ── TELA REPORTE ──────────────────────────────────────────────────────────
+  // ── REPORTE ───────────────────────────────────────────────────────────────
   if (tela === "reporte") return (
     <div style={{ minHeight: "100vh", background: "#F8FAFC", fontFamily: "Arial, sans-serif" }}>
       <div style={{ background: "linear-gradient(135deg,#0D1F4E,#1B4FD8)", padding: "20px 24px", display: "flex", alignItems: "center", gap: 14 }}>
@@ -639,10 +693,7 @@ export default function App() {
               <label style={{ fontSize: 14, fontWeight: 700, color: "#0D1F4E", display: "block", marginBottom: 8 }}>Descrição</label>
               <textarea placeholder="Descreva o problema..." value={descricao} onChange={e => setDescricao(e.target.value)} rows={4} style={{ ...inputStyle, resize: "vertical" }} />
             </div>
-
             <UploadFoto foto={foto} setFoto={setFoto} preview={preview} setPreview={setPreview} />
-
-            {/* LOCALIZAÇÃO */}
             <div style={{ marginBottom: 20 }}>
               <label style={{ fontSize: 14, fontWeight: 700, color: "#0D1F4E", display: "block", marginBottom: 8 }}>
                 📍 Localização <span style={{ fontSize: 12, color: "#94A3B8", fontWeight: 400 }}>(opcional)</span>
@@ -658,7 +709,6 @@ export default function App() {
                 </button>
               )}
             </div>
-
             <Btn onClick={enviarReporte} disabled={enviando}>{enviando ? "Enviando..." : "📤 Enviar Reporte"}</Btn>
           </div>
         )}
