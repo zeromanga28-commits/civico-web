@@ -22,8 +22,10 @@ jobs:
       - name: Criar arquivo .env
         run: echo "GROQ_API_KEY=${{ secrets.GROQ_API_KEY }}" > .env
 
-      - name: Rodar Carlote
-        run: npx carlote-ia src/App.js
+      - name: Instalar e rodar Carlote
+        run: |
+          npm install carlote-ia
+          ./node_modules/.bin/carlote-ia src/App.js
 
       - name: Upload do relatório
         uses: actions/upload-artifact@v4
